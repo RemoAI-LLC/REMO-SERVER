@@ -1,0 +1,11 @@
+Chatbot Graph Structure
+=====================
+
+Nodes:
+  - __start__
+  - chatbot
+  - __end__
+
+Edges:
+  - __start__ -> chatbot
+  - chatbot -> __end__
