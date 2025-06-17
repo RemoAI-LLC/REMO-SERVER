@@ -1,4 +1,6 @@
-langgraph>=0.0.10
+langgraph>=0.0.15
 langchain>=0.1.0
+langsmith>=0.0.69
+python-dotenv>=1.0.0
 langchain-openai>=0.0.2
-python-dotenv>=1.0.0 
+ipython>=8.0.0  # For graph visualization 

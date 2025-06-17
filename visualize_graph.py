@@ -1,3 +1,8 @@
+"""
+Visualize Remo's graph structure using LangGraph's built-in visualization
+This script generates a visual representation of Remo's state machine.
+"""
+
 from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START
@@ -18,17 +23,20 @@ graph_builder = StateGraph(State)
 
 # Initialize the LLM
 llm = ChatOpenAI(
-    model="gpt-3.5-turbo",
-    temperature=0.7
+    model="gpt-4",
+    temperature=0.7,
+    tags=["remo", "advanced-assistant"]
 )
 
-# Define the chatbot node
-def chatbot(state: State):
+# Define Remo's node function
+def remo(state: State):
     return {"messages": [llm.invoke(state["messages"])]}
 
-# Add the node and edge
-graph_builder.add_node("chatbot", chatbot)
-graph_builder.add_edge(START, "chatbot")
+# Add the Remo node
+graph_builder.add_node("remo", remo)
+
+# Add the entry point
+graph_builder.add_edge(START, "remo")
 
 # Compile the graph
 graph = graph_builder.compile()
@@ -36,32 +44,24 @@ graph = graph_builder.compile()
 # Visualize the graph
 print("Generating graph visualization...")
 try:
-    # Get the graph structure
-    graph_structure = graph.get_graph()
+    # Get the graph visualization
+    graph_image = graph.get_graph().draw_mermaid_png()
     
-    # Print the graph structure in a readable format
-    print("\nGraph Structure:")
-    print("---------------")
-    print("Nodes:")
-    for node in graph_structure.nodes:
-        print(f"  - {node}")
+    # Save the graph as a PNG file
+    with open("remo_graph.png", "wb") as f:
+        f.write(graph_image)
     
-    print("\nEdges:")
-    for edge in graph_structure.edges:
-        print(f"  - {edge[0]} -> {edge[1]}")
+    print("Graph visualization has been saved as 'remo_graph.png'")
     
-    # Try to save as a simple text file
-    with open("chatbot_graph.txt", "w") as f:
-        f.write("Chatbot Graph Structure\n")
-        f.write("=====================\n\n")
-        f.write("Nodes:\n")
-        for node in graph_structure.nodes:
-            f.write(f"  - {node}\n")
-        f.write("\nEdges:\n")
-        for edge in graph_structure.edges:
-            f.write(f"  - {edge[0]} -> {edge[1]}\n")
-    
-    print("\nGraph structure has been saved to 'chatbot_graph.txt'")
-    
+    # Try to display in IPython if available
+    try:
+        from IPython.display import Image, display
+        display(Image(graph_image))
+    except:
+        pass
+        
 except Exception as e:
-    print(f"Error visualizing graph: {e}") 
+    print(f"Could not visualize graph: {e}")
+    print("\nTo view the graph, you can:")
+    print("1. Run this script in a Jupyter notebook")
+    print("2. Or use the graph.get_graph().draw_mermaid_png() method directly") 
