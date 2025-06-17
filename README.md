@@ -2,7 +2,11 @@
 
 "Remo: A personal AI Assistant that can be hired by every human on the planet. Personal assistants are not just for the rich anymore."
 
-This project implements Remo, a human-like personal AI assistant using LangGraph, LangChain, and LangSmith. Remo is designed to make personal assistance accessible to everyone, providing the same level of support that was once only available to the wealthy.
+## Why Remo?
+
+In today's fast-paced world, people are overwhelmed with various tasks requiring different skills and information overload. And that's where Personal assistants can make our work easy!
+
+But traditionally, personal assistants have been a luxury available only to the wealthy or executives. The average person cannot afford a full-time human personal assistant because they are costly. And that is why we have introduced Remo.
 
 ## Project Overview
 
@@ -11,6 +15,8 @@ Remo is built using three main components:
 - **LangChain**: Provides the core LLM integration and chat model functionality
 - **LangGraph**: Enables building stateful, multi-agent applications with a graph-based architecture
 - **LangSmith**: Offers tracing, monitoring, and debugging capabilities for the LLM application
+
+Remo is a human-like personal assistant designed to be accessible to everyone. It combines the power of LangChain, LangGraph, and LangSmith to create an intelligent, responsive, and capable AI assistant that can help with various tasks.
 
 ## Remo's Mission & Personality
 
