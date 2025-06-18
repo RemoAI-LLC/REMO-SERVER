@@ -3,4 +3,5 @@ langchain>=0.1.0
 langsmith>=0.0.69
 python-dotenv>=1.0.0
 langchain-openai>=0.0.2
-ipython>=8.0.0  # For graph visualization 
+ipython>=8.0.0  # For graph visualization
+langgraph-supervisor>=0.0.27  # For multi-agent orchestration 

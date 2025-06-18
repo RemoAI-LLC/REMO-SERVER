@@ -1,6 +1,8 @@
 """
 Remo - Your Personal AI Assistant
 "Remo: A personal AI Assistant that can be hired by every human on the planet. Personal assistants are not just for the rich anymore."
+
+Now powered by multi-agent orchestration with specialized agents for reminders and todo management.
 """
 
 # Step 1: Import required packages
@@ -13,10 +15,13 @@ from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 import os
 
+# Import the multi-agent orchestration system
+from src.orchestration import SupervisorOrchestrator
+
 # Load environment variables from .env file
 load_dotenv()
 
-# Step 2: Create a StateGraph
+# Step 2: Create a StateGraph (kept for compatibility)
 # ---------------------------
 class State(TypedDict):
     messages: Annotated[list, add_messages]
@@ -24,17 +29,28 @@ class State(TypedDict):
 # Initialize the graph with our State type
 graph_builder = StateGraph(State)
 
-# Step 3: Add a node
-# ----------------
-# Initialize the LLM with tracing enabled
+# Step 3: Initialize the multi-agent orchestrator
+# ----------------------------------------------
+# Initialize the supervisor orchestrator with specialized agents
+supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4")
+
+# Step 4: Create a simple Remo node that uses the orchestrator
+# -----------------------------------------------------------
+# Initialize the LLM for basic Remo functionality
 llm = ChatOpenAI(
     model="gpt-4",  # Using GPT-4 for more advanced capabilities
     temperature=0.7,
     tags=["remo", "advanced-assistant"]
 )
 
-# Define Remo's personality and capabilities
+# Define Remo's enhanced personality and capabilities
 REMO_SYSTEM_PROMPT = """You are Remo, a personal AI Assistant that can be hired by every human on the planet. Your mission is to make personal assistance accessible to everyone, not just the wealthy. You are designed to be a genuine, human-like personal assistant that understands and empathizes with people's daily needs and challenges.
+
+You now have access to specialized AI agents that help you provide even better service:
+
+**Your Specialized Team:**
+- **Reminder Agent**: Manages reminders, alerts, and scheduled tasks
+- **Todo Agent**: Handles todo lists, task organization, and project management
 
 Your key characteristics are:
 
@@ -73,7 +89,7 @@ Your key characteristics are:
    - Learn from each interaction
    - Provide practical, actionable advice
 
-Your capabilities include:
+Your enhanced capabilities include:
 - Managing emails and communications
 - Scheduling and calendar management
 - Task and project organization
@@ -84,6 +100,8 @@ Your capabilities include:
 - Personal and professional task management
 - Reminder and follow-up management
 - Basic decision support
+- **NEW**: Specialized reminder management through Reminder Agent
+- **NEW**: Advanced todo and task organization through Todo Agent
 
 Always aim to:
 - Be proactive in offering solutions
@@ -94,6 +112,7 @@ Always aim to:
 - Show genuine care and understanding
 - Be resourceful and creative
 - Maintain a balance between professional and personal touch
+- **NEW**: Seamlessly coordinate with your specialized agents
 
 Remember: You're not just an AI assistant, but a personal companion that makes everyday tasks effortless and accessible to everyone. Your goal is to provide the same level of personal assistance that was once only available to the wealthy, making it accessible to every human on the planet.
 
@@ -106,30 +125,80 @@ When interacting:
 6. Be resourceful and creative
 7. Maintain professionalism while being friendly
 8. Show genuine interest in helping
+9. **NEW**: Coordinate with your specialized agents when needed
 
 Your responses should feel like talking to a real human personal assistant who is:
 - Professional yet approachable
 - Efficient yet caring
 - Smart yet humble
 - Helpful yet not overbearing
-- Resourceful yet practical"""
+- Resourceful yet practical
+- **NEW**: Backed by a team of specialized experts"""
 
-# Define the Remo node function
+# Define the enhanced Remo node function that uses the orchestrator
 def remo(state: State):
-    return {"messages": [llm.invoke(state["messages"])]}
+    """
+    Enhanced Remo node that coordinates with specialized agents.
+    Routes requests to appropriate agents while maintaining Remo's personality.
+    """
+    # Get the user's message
+    user_message = state["messages"][-1].content if state["messages"] else ""
+    
+    # Check if the request involves specialized tasks (reminders or todos)
+    specialized_keywords = [
+        # Reminder-related keywords
+        "reminder", "remind", "alert", "schedule", "appointment", "alarm", "wake up", "meeting",
+        "set", "create", "add reminder", "set reminder", "set alarm", "set appointment",
+        
+        # Todo-related keywords
+        "todo", "task", "project", "organize", "prioritize", "complete", "add to", "add todo",
+        "to do", "to-do", "checklist", "list", "add task", "create task", "mark complete",
+        "finish", "done", "complete task", "todo list", "task list"
+    ]
+    
+    has_specialized_request = any(keyword in user_message.lower() for keyword in specialized_keywords)
+    
+    # Debug: Print what we detected
+    print(f"DEBUG: User message: '{user_message}'")
+    print(f"DEBUG: Has specialized request: {has_specialized_request}")
+    
+    if has_specialized_request:
+        # Use the supervisor orchestrator for specialized tasks
+        try:
+            print("DEBUG: Routing to specialized agents...")
+            # Convert state messages to the format expected by the orchestrator
+            conversation_history = []
+            for msg in state["messages"][:-1]:  # Exclude the current user message
+                conversation_history.append({
+                    "role": msg.type,
+                    "content": msg.content
+                })
+            
+            # Process through the orchestrator
+            response = supervisor_orchestrator.process_request(user_message, conversation_history)
+            print(f"DEBUG: Agent response: {response}")
+            return {"messages": [llm.invoke([{"role": "system", "content": REMO_SYSTEM_PROMPT}, {"role": "user", "content": response}])]}
+        except Exception as e:
+            print(f"DEBUG: Orchestrator failed: {e}")
+            # Fallback to basic Remo if orchestrator fails
+            return {"messages": [llm.invoke(state["messages"])]}
+    else:
+        # Use basic Remo for general conversation
+        print("DEBUG: Using basic Remo for general conversation")
+        return {"messages": [llm.invoke(state["messages"])]}
 
 # Add the Remo node to our graph
 graph_builder.add_node("remo", remo)
 
-# Step 4: Add an entry point
+# Step 5: Add an entry point
 # ------------------------
 graph_builder.add_edge(START, "remo")
 
-# Step 5: Compile the graph
+# Step 6: Compile the graph
 # -----------------------
 graph = graph_builder.compile()
 
-# Step 6: Visualize the graph (optional)
+# Step 7: Visualize the graph (optional)
 # -----------------------------------
 try:
     from IPython.display import Image, display
@@ -137,7 +206,7 @@ try:
 except Exception as e:
     print("Could not visualize graph:", e)
 
-# Step 7: Run Remo
+# Step 8: Run Remo
 # --------------
 def stream_graph_updates(user_input: str):
     """
@@ -160,11 +229,19 @@ def main():
     Handles the interaction loop and user input
     """
     print("\n=== Remo - Your Advanced AI Assistant ===")
-    print("Initializing Remo...")
-    print("\nRemo is ready to assist you!")
+    print("Initializing Remo with multi-agent orchestration...")
+    print("\n🤖 Remo is ready to assist you!")
+    print("🔄 Now powered by specialized agents for reminders and todo management")
     print("Type 'quit', 'exit', or 'q' to end the conversation.")
     print("All interactions will be traced in LangSmith.")
     print("\nHow can I help you today?")
+    
+    # Display available agents
+    agent_info = supervisor_orchestrator.get_agent_info()
+    print("\n📋 Available Specialists:")
+    for agent_name, description in agent_info.items():
+        print(f"   • {agent_name.replace('_', ' ').title()}: {description}")
+    print()
     
     while True:
         try:

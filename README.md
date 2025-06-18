@@ -2,6 +2,8 @@
 
 "Remo: A personal AI Assistant that can be hired by every human on the planet. Personal assistants are not just for the rich anymore."
 
+**Now powered by multi-agent orchestration with specialized agents for enhanced capabilities!**
+
 ## Why Remo?
 
 In today's fast-paced world, people are overwhelmed with various tasks requiring different skills and information overload. And that's where Personal assistants can make our work easy!
@@ -10,13 +12,40 @@ But traditionally, personal assistants have been a luxury available only to the 
 
 ## Project Overview
 
-Remo is built using three main components:
+Remo is built using advanced AI orchestration technologies:
 
 - **LangChain**: Provides the core LLM integration and chat model functionality
 - **LangGraph**: Enables building stateful, multi-agent applications with a graph-based architecture
 - **LangSmith**: Offers tracing, monitoring, and debugging capabilities for the LLM application
+- **LangGraph Supervisor**: Powers multi-agent orchestration and coordination
 
-Remo is a human-like personal assistant designed to be accessible to everyone. It combines the power of LangChain, LangGraph, and LangSmith to create an intelligent, responsive, and capable AI assistant that can help with various tasks.
+Remo is a human-like personal assistant designed to be accessible to everyone. It combines the power of LangChain, LangGraph, and LangSmith with specialized AI agents to create an intelligent, responsive, and capable AI assistant that can help with various tasks.
+
+## 🚀 New: Multi-Agent Orchestration
+
+Remo now features a sophisticated multi-agent system that coordinates specialized AI agents for different tasks:
+
+### **Available Specialists:**
+
+1. **Reminder Agent** 📅
+
+   - Manages reminders, alerts, and scheduled tasks
+   - Sets precise time-based notifications
+   - Organizes and tracks reminder history
+   - Updates and manages existing reminders
+
+2. **Todo Agent** ✅
+   - Handles todo lists and task organization
+   - Manages project priorities and categories
+   - Tracks task completion and progress
+   - Provides productivity insights and recommendations
+
+### **How It Works:**
+
+- **Supervisor Pattern**: Remo acts as a supervisor that routes requests to specialized agents
+- **Intelligent Routing**: Automatically detects task types and routes to appropriate specialists
+- **Seamless Integration**: Maintains Remo's personality while leveraging specialized expertise
+- **Coordinated Responses**: Combines responses when multiple agents are involved
 
 ## Remo's Mission & Personality
 
@@ -61,7 +90,7 @@ Remo is designed to be a genuine, human-like personal assistant that understands
    - Continuous learning
    - Practical, actionable advice
 
-## Capabilities
+## Enhanced Capabilities
 
 Remo can assist with:
 
@@ -75,6 +104,8 @@ Remo can assist with:
 - Personal and professional task management
 - Reminder and follow-up management
 - Basic decision support
+- **NEW**: Specialized reminder management through Reminder Agent
+- **NEW**: Advanced todo and task organization through Todo Agent
 
 ## Prerequisites
 
@@ -161,14 +192,50 @@ Features:
 - Debugging tools
 - Trace visualization
 
+### 4. Multi-Agent Orchestration
+
+The new multi-agent system uses LangGraph Supervisor for coordination:
+
+```python
+from src.orchestration import SupervisorOrchestrator
+
+# Initialize the orchestrator
+orchestrator = SupervisorOrchestrator(model_name="gpt-4")
+
+# Process requests through specialized agents
+response = orchestrator.process_request("Set a reminder for tomorrow's meeting")
+```
+
+Key features:
+
+- **Supervisor Pattern**: Centralized coordination of specialized agents
+- **Intelligent Routing**: Automatic detection and routing of task types
+- **Seamless Integration**: Maintains conversation flow across agents
+- **Specialized Expertise**: Each agent has focused capabilities
+
 ## Project Structure
 
 ```
-.
+Lang-Agent/
 ├── .env                    # Environment variables
 ├── requirements.txt        # Project dependencies
-├── remo.py                # Main Remo implementation
-└── README.md              # This documentation
+├── remo.py                # Main Remo implementation with multi-agent integration
+├── visualize_graph.py     # Graph visualization utilities
+├── src/                   # Multi-agent system source code
+│   ├── agents/           # Specialized AI agents
+│   │   ├── reminders/    # Reminder management agent
+│   │   │   ├── reminder_agent.py
+│   │   │   └── reminder_tools.py
+│   │   └── todo/         # Todo management agent
+│   │       ├── todo_agent.py
+│   │       └── todo_tools.py
+│   ├── orchestration/    # Multi-agent coordination
+│   │   └── supervisor.py # Supervisor orchestrator
+│   └── utils/           # Shared utilities
+│       └── state.py     # State management
+├── reminders.json        # Reminder storage (auto-generated)
+├── todos.json           # Todo storage (auto-generated)
+└── README.md            # This documentation
 ```
 
 ## Setup
@@ -198,100 +265,156 @@ pip install -r requirements.txt
 
 ```
 OPENAI_API_KEY=your_openai_api_key_here
-LANGCHAIN_API_KEY=your_langsmith_api_key_here
-LANGCHAIN_PROJECT=your_project_name
-LANGCHAIN_TRACING_V2=true-false
 ```
 
-## Running Remo
-
-1. Start Remo:
+4. Run Remo:
 
 ```bash
 python remo.py
 ```
 
-2. Interact with Remo:
+## Usage Examples
 
-```python
-# Example interaction
-You: Hello!
-Remo: Hi! I'm Remo, your advanced AI assistant. How can I help you today?
+### Basic Interaction
 
-You: Can you help me organize my tasks?
-Remo: I'd be happy to help you organize your tasks! I can assist with creating to-do lists, setting reminders, and managing your workflow. Would you like to start by listing your current tasks?
+```bash
+$ python remo.py
+
+=== Remo - Your Advanced AI Assistant ===
+Initializing Remo with multi-agent orchestration...
+
+🤖 Remo is ready to assist you!
+🔄 Now powered by specialized agents for reminders and todo management
+
+📋 Available Specialists:
+   • Reminder Agent: Manages reminders, alerts, and scheduled tasks
+   • Todo Agent: Manages todo lists, tasks, and project organization
+
+How can I help you today?
+
+You: Set a reminder for my dentist appointment tomorrow at 2 PM
+Remo: I'll help you set that reminder through our specialized reminder system.
+
+✅ Reminder set: 'Dentist appointment' for 2024-01-16 14:00
+
+You: Add "buy groceries" to my todo list
+Remo: I'll add that to your todo list through our task management specialist.
+
+✅ Todo added: 'buy groceries' (Priority: Medium, Category: General)
 ```
 
-3. View traces in LangSmith:
+### Multi-Agent Coordination
 
-- Visit [LangSmith Dashboard](https://smith.langchain.com)
-- Navigate to your project
-- View traces for each conversation
+```bash
+You: Set a reminder for my team meeting tomorrow at 10 AM and add "prepare presentation slides" to my high priority todos
 
-## Key Features
+Remo: I'll handle both tasks for you - setting the reminder and adding the todo item.
 
-### 1. Stateful Conversations
-
-```python
-# Messages are automatically appended to the state
-state = {
-    "messages": [
-        {"role": "user", "content": "Hello!"},
-        {"role": "assistant", "content": "Hi! How can I help you today?"}
-    ]
-}
+✅ Reminder set: 'Team meeting' for 2024-01-16 10:00
+✅ Todo added: 'prepare presentation slides' (Priority: High, Category: Work)
 ```
 
-### 2. Streaming Responses
+## Agent Capabilities
 
-```python
-# Real-time response streaming
-for event in graph.stream(state):
-    print("Remo:", event["messages"][-1].content)
-```
+### Reminder Agent
 
-### 3. Tracing and Monitoring
+**Tools Available:**
 
-```python
-# Each interaction is traced
-with Client() as client:
-    run = client.create_run(
-        name="remo_interaction",
-        inputs={"messages": state["messages"]}
-    )
-```
+- `set_reminder(title, datetime_str, description)`: Create new reminders
+- `list_reminders(show_completed)`: View all reminders
+- `update_reminder(reminder_id, title, datetime_str, description)`: Modify existing reminders
+- `delete_reminder(reminder_id)`: Remove reminders
+- `mark_reminder_complete(reminder_id)`: Mark reminders as completed
 
-### 4. Error Handling
+**Example Commands:**
 
-```python
-try:
-    response = graph.invoke(state)
-except Exception as e:
-    print(f"Remo: I encountered an error: {e}")
-    print("Please try again or let me know if you need help with something else.")
-```
+- "Set a reminder for my doctor's appointment next Friday at 3 PM"
+- "Show me all my active reminders"
+- "Update my meeting reminder to 2 PM instead of 1 PM"
+- "Mark my dentist reminder as completed"
 
-## Dependencies
+### Todo Agent
 
-- langgraph: For building the state machine
-- langchain: For LLM integration
-- langsmith: For tracing and monitoring
-- python-dotenv: For environment variable management
+**Tools Available:**
 
-## Future Enhancements
+- `add_todo(title, description, priority, category)`: Create new todo items
+- `list_todos(category, show_completed, priority)`: View todos with filtering
+- `mark_todo_complete(todo_id)`: Mark todos as completed
+- `update_todo(todo_id, title, description, priority, category)`: Modify todos
+- `delete_todo(todo_id)`: Remove todos
+- `prioritize_todos()`: Get priority overview and recommendations
 
-Planned improvements:
+**Example Commands:**
 
-1. Multi-agent orchestration for complex tasks
-2. Enhanced workflow automation capabilities
-3. Integration with external services (email, calendar, etc.)
-4. Advanced task management features
-5. Personalized learning and adaptation
-6. Natural language processing improvements
-7. Enhanced error recovery and handling
+- "Add 'finish project report' to my high priority work todos"
+- "Show me all my personal todos"
+- "Mark the grocery shopping todo as complete"
+- "Give me a priority overview of my tasks"
 
-## Resources
+## Architecture Details
 
-- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [LangChain Documentation](https://python.langchain.com/)
-- [LangSmith Documentation](https://docs.smith.langchain.com/)
+### Multi-Agent Flow
+
+1. **User Input** → `remo.py`
+2. **Request Analysis** → Detects specialized keywords (reminder, todo, etc.)
+3. **Agent Routing** → Routes to appropriate specialized agent(s)
+4. **Specialized Processing** → Agent handles the request with focused expertise
+5. **Response Aggregation** → Supervisor combines responses if multiple agents involved
+6. **User Output** → Returns coordinated response maintaining Remo's personality
+
+### State Management
+
+- **Persistent Storage**: Reminders and todos are stored in JSON files
+- **Conversation History**: Maintained across agent interactions
+- **Context Preservation**: User preferences and patterns are remembered
+
+### Error Handling
+
+- **Graceful Fallbacks**: If specialized agents fail, falls back to basic Remo
+- **Error Recovery**: Continues operation even if individual components fail
+- **User Feedback**: Clear error messages and recovery suggestions
+
+## Development
+
+### Adding New Agents
+
+To add a new specialized agent:
+
+1. Create a new agent directory in `src/agents/`
+2. Implement agent class with `get_agent()`, `get_name()`, and `get_description()` methods
+3. Add agent tools in a separate `*_tools.py` file
+4. Update `SupervisorOrchestrator` to include the new agent
+5. Update routing logic in `remo.py`
+
+### Customizing Agent Behavior
+
+Each agent can be customized by:
+
+- Modifying the persona in the agent class
+- Adding new tools to the agent's toolset
+- Adjusting temperature and other LLM parameters
+- Customizing the supervisor's routing logic
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For support and questions:
+
+- Open an issue on GitHub
+- Check the documentation
+- Review the LangGraph and LangChain documentation
+
+---
+
+**Remo: Making personal assistance accessible to everyone, one conversation at a time.** 🤖✨
