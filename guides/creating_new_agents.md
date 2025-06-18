@@ -511,7 +511,7 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [LangGraph Supervisor Guide](https://langchain-ai.github.io/langgraph/agents/multi-agent/)
-- [LangChain Tools Documentation](https://python.langchain.com/docs/modules/tools/)
+- [LangChain Tools Documentation](https://langchain-ai.github.io/langgraph/agents/tools/)
 
 ---
 
