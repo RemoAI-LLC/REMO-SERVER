@@ -200,6 +200,7 @@ pip install -r requirements.txt
 OPENAI_API_KEY=your_openai_api_key_here
 LANGCHAIN_API_KEY=your_langsmith_api_key_here
 LANGCHAIN_PROJECT=your_project_name
+LANGCHAIN_TRACING_V2=true-false
 ```
 
 ## Running Remo
