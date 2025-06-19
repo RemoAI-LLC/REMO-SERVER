@@ -4,30 +4,33 @@ This folder contains comprehensive guides for developing and extending the Remo 
 
 ## 📖 Available Guides
 
+### [Architecture Overview](./architecture_overview.md)
+
+A high-level explanation of Remo's architecture, including agent structure, orchestration, and how the system fits together.
+
+### [Building from Scratch](./building_from_scratch.md)
+
+Step-by-step instructions for setting up the project, installing dependencies, and understanding the codebase layout.
+
 ### [Creating New Agents](./creating_new_agents.md)
 
 A complete step-by-step guide for adding new specialized agents to the Remo multi-agent orchestration system.
 
-**What you'll learn:**
+### [Agent Orchestration & Routing](./orchestration_and_routing.md)
 
-- How to create new agent directories and files
-- How to implement agent tools and personas
-- How to integrate agents with the supervisor orchestrator
-- How to update routing logic and test your new agent
-- Best practices and troubleshooting tips
+Details on how the supervisor orchestrator works, how requests are routed, and how to extend orchestration logic.
 
-**Perfect for:**
+### [Visualization & Debugging](./visualization_and_debugging.md)
 
-- Adding new specialized agents (email, calendar, research, etc.)
-- Understanding the multi-agent architecture
-- Following established patterns and conventions
+How to use the graph visualization tool, LangSmith tracing, and best practices for debugging multi-agent workflows.
 
 ## 🎯 Quick Start
 
-1. **Read the guide**: Start with [Creating New Agents](./creating_new_agents.md)
-2. **Follow the steps**: Use the step-by-step instructions
-3. **Test your agent**: Verify it works with the main Remo system
-4. **Check LangSmith**: Monitor traces and performance
+1. **Read the [Architecture Overview](./architecture_overview.md)** to understand the big picture
+2. **Follow [Building from Scratch](./building_from_scratch.md)** to set up your environment
+3. **Add or modify agents using [Creating New Agents](./creating_new_agents.md)**
+4. **Learn about orchestration in [Agent Orchestration & Routing](./orchestration_and_routing.md)**
+5. **Visualize and debug with [Visualization & Debugging](./visualization_and_debugging.md)**
 
 ## 🚀 Example Use Cases
 
