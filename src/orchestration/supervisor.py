@@ -2,6 +2,7 @@
 Supervisor Orchestrator
 Coordinates multiple specialized agents using LangGraph's supervisor pattern.
 Routes user requests to appropriate agents and aggregates responses.
+Enhanced with memory integration for better context awareness.
 """
 
 from typing import List, Dict, Any
@@ -15,6 +16,7 @@ class SupervisorOrchestrator:
     """
     Supervisor-based multi-agent orchestrator that coordinates specialized agents.
     Routes user requests to appropriate agents and manages the overall conversation flow.
+    Enhanced with memory integration for better context awareness.
     """
     
     def __init__(self, model_name: str = "gpt-4"):
@@ -58,12 +60,14 @@ Your responsibilities:
 - **Maintain Context**: Ensure smooth transitions between agents
 - **Aggregate Responses**: Combine responses when multiple agents are involved
 - **Provide Overview**: Give users a clear understanding of what's happening
+- **Handle Multi-turn Conversations**: Remember context from previous messages
 
 When routing requests:
-- **Reminder-related**: "set reminder", "remind me", "alert", "schedule", "appointment"
+- **Reminder-related**: "set reminder", "remind me", "alert", "schedule", "appointment", time expressions like "6am", "2pm"
 - **Todo-related**: "add todo", "task", "project", "organize", "prioritize", "complete task"
 - **Mixed requests**: Handle both reminder and todo tasks in sequence
 - **General queries**: Provide helpful guidance and route appropriately
+- **Context responses**: If user provides time/task info after a previous request, route to the appropriate agent
 
 Guidelines:
 1. Be proactive in understanding user needs
@@ -72,8 +76,11 @@ Guidelines:
 4. Maintain Remo's friendly, professional personality
 5. Provide clear explanations of what each agent is doing
 6. Ensure seamless user experience across all interactions
+7. Remember conversation context and handle follow-up responses
+8. If user provides incomplete information, ask for clarification
+9. Handle time expressions and task descriptions appropriately
 
-Remember: You're the conductor of an orchestra of specialists, ensuring each plays their part perfectly to create a harmonious user experience."""
+Remember: You're the conductor of an orchestra of specialists, ensuring each plays their part perfectly to create a harmonious user experience. Pay attention to conversation context and handle multi-turn interactions seamlessly."""
 
         # Create the supervisor with all agents
         supervisor = create_supervisor(
@@ -165,4 +172,21 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
     
     def get_supervisor(self):
         """Get the compiled supervisor for direct use"""
-        return self.supervisor 
+        return self.supervisor
+    
+    def get_agent_by_name(self, agent_name: str):
+        """
+        Get a specific agent by name.
+        
+        Args:
+            agent_name: Name of the agent to retrieve
+            
+        Returns:
+            The requested agent or None if not found
+        """
+        if agent_name == "reminder_agent":
+            return self.reminder_agent
+        elif agent_name == "todo_agent":
+            return self.todo_agent
+        else:
+            return None 

@@ -20,6 +20,10 @@ A complete step-by-step guide for adding new specialized agents to the Remo mult
 
 Details on how the supervisor orchestrator works, how requests are routed, and how to extend orchestration logic.
 
+### [Conversation Memory System](./conversation_memory_guide.md)
+
+**NEW**: Comprehensive guide to the conversation memory system, including how to add memory to new agents and troubleshoot memory issues.
+
 ### [Visualization & Debugging](./visualization_and_debugging.md)
 
 How to use the graph visualization tool, LangSmith tracing, and best practices for debugging multi-agent workflows.
@@ -30,7 +34,8 @@ How to use the graph visualization tool, LangSmith tracing, and best practices f
 2. **Follow [Building from Scratch](./building_from_scratch.md)** to set up your environment
 3. **Add or modify agents using [Creating New Agents](./creating_new_agents.md)**
 4. **Learn about orchestration in [Agent Orchestration & Routing](./orchestration_and_routing.md)**
-5. **Visualize and debug with [Visualization & Debugging](./visualization_and_debugging.md)**
+5. **Understand memory in [Conversation Memory System](./conversation_memory_guide.md)**
+6. **Visualize and debug with [Visualization & Debugging](./visualization_and_debugging.md)**
 
 ## 🚀 Example Use Cases
 
@@ -39,6 +44,42 @@ How to use the graph visualization tool, LangSmith tracing, and best practices f
 - **Research Agent**: Search and summarize information
 - **Shopping Agent**: Create lists and find products
 - **Health Agent**: Track fitness and wellness goals
+
+## 🧠 Memory System Features
+
+The conversation memory system provides:
+
+- **Persistent Context**: Remembers conversation state across turns
+- **Intelligent Routing**: Routes messages based on context, not just keywords
+- **Multi-turn Support**: Handles incomplete requests and follow-up responses
+- **Intent Detection**: Automatically detects reminder and todo intents
+- **Time Recognition**: Recognizes time expressions like "6am", "2pm", "tomorrow"
+- **Conversation Persistence**: Saves and loads conversation history
+- **Memory Types**: Supports buffer (short-term) and summary (long-term) memory
+- **Adaptive Memory**: Can switch between memory types based on conversation length
+
+### Memory Type Quick Reference
+
+| Memory Type          | Use Case                                  | Pros                                               | Cons                              |
+| -------------------- | ----------------------------------------- | -------------------------------------------------- | --------------------------------- |
+| **Buffer** (Default) | Daily conversations, task completion      | Exact context, fast, perfect for multi-turn        | Memory grows with conversation    |
+| **Summary**          | Extended conversations, long sessions     | Constant memory usage, handles long conversations  | May lose details, slower          |
+| **Vector** (Future)  | User preference learning, semantic search | Semantic search, scales well                       | Complex setup, requires vector DB |
+| **Entity** (Future)  | Person/entity tracking, business apps     | Tracks specific entities, good for personalization | Limited context, entity-only      |
+
+### Quick Memory Configuration
+
+```python
+# Default - perfect for most use cases
+memory_manager = ConversationMemoryManager(memory_type="buffer")
+
+# For long conversations
+memory_manager = ConversationMemoryManager(memory_type="summary", max_tokens=2000)
+
+# Auto-switch for long conversations
+if len(memory_manager.get_recent_messages()) > 50:
+    memory_manager = ConversationMemoryManager(memory_type="summary")
+```
 
 ## 📝 Contributing
 

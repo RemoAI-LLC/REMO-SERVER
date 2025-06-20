@@ -2,7 +2,7 @@
 
 "Remo: A personal AI Assistant that can be hired by every human on the planet. Personal assistants are not just for the rich anymore."
 
-**Now powered by multi-agent orchestration with specialized agents for enhanced capabilities!**
+**Now powered by multi-agent orchestration with specialized agents for enhanced capabilities and conversation memory for seamless multi-turn interactions!**
 
 ## Why Remo?
 
@@ -18,12 +18,13 @@ Remo is built using advanced AI orchestration technologies:
 - **LangGraph**: Enables building stateful, multi-agent applications with a graph-based architecture
 - **LangSmith**: Offers tracing, monitoring, and debugging capabilities for the LLM application
 - **LangGraph Supervisor**: Powers multi-agent orchestration and coordination
+- **Conversation Memory**: Maintains context across multi-turn conversations
 
-Remo is a human-like personal assistant designed to be accessible to everyone. It combines the power of LangChain, LangGraph, and LangSmith with specialized AI agents to create an intelligent, responsive, and capable AI assistant that can help with various tasks.
+Remo is a human-like personal assistant designed to be accessible to everyone. It combines the power of LangChain, LangGraph, and LangSmith with specialized AI agents and conversation memory to create an intelligent, responsive, and capable AI assistant that can help with various tasks.
 
-## 🚀 New: Multi-Agent Orchestration
+## 🚀 New: Multi-Agent Orchestration with Conversation Memory
 
-Remo now features a sophisticated multi-agent system that coordinates specialized AI agents for different tasks:
+Remo now features a sophisticated multi-agent system that coordinates specialized AI agents for different tasks, enhanced with conversation memory for seamless multi-turn interactions:
 
 ### **Available Specialists:**
 
@@ -33,17 +34,33 @@ Remo now features a sophisticated multi-agent system that coordinates specialize
    - Sets precise time-based notifications
    - Organizes and tracks reminder history
    - Updates and manages existing reminders
+   - **NEW**: Remembers context across conversation turns
 
 2. **Todo Agent** ✅
    - Handles todo lists and task organization
    - Manages project priorities and categories
    - Tracks task completion and progress
    - Provides productivity insights and recommendations
+   - **NEW**: Maintains conversation context for incomplete requests
+
+### **Conversation Memory Features:**
+
+- **🧠 Persistent Context**: Remembers conversation state across multiple turns
+- **🎯 Intelligent Routing**: Routes messages based on context, not just keywords
+- **🔄 Multi-turn Support**: Handles incomplete requests and follow-up responses
+- **📝 Intent Detection**: Automatically detects reminder and todo intents
+- **⏰ Time Recognition**: Recognizes time expressions like "6am", "2pm", "tomorrow"
+- **💾 Conversation Persistence**: Saves and loads conversation history
+- **📊 Memory Types**: Supports buffer (short-term) and summary (long-term) memory
+- **🔍 Context-Aware Responses**: Uses conversation history for better responses
+- **⏱️ Request Timeout Management**: Automatically cleans up expired requests
+- **🎛️ Adaptive Memory**: Can switch between memory types based on conversation length
 
 ### **How It Works:**
 
 - **Supervisor Pattern**: Remo acts as a supervisor that routes requests to specialized agents
 - **Intelligent Routing**: Automatically detects task types and routes to appropriate specialists
+- **Context Awareness**: Maintains conversation context for seamless multi-turn interactions
 - **Seamless Integration**: Maintains Remo's personality while leveraging specialized expertise
 - **Coordinated Responses**: Combines responses when multiple agents are involved
 
@@ -58,6 +75,7 @@ Remo is designed to be a genuine, human-like personal assistant that understands
    - Appropriate humor and personality
    - Warm, friendly tone while maintaining professionalism
    - Emotional intelligence in responses
+   - **NEW**: Perfect memory of conversation context
 
 2. Proactive Assistance:
 
@@ -66,6 +84,7 @@ Remo is designed to be a genuine, human-like personal assistant that understands
    - Remembers user preferences and patterns
    - Follows up on previous conversations
    - Takes initiative in solving problems
+   - **NEW**: Remembers incomplete requests and asks for missing information
 
 3. Professional yet Approachable:
 
@@ -106,6 +125,7 @@ Remo can assist with:
 - Basic decision support
 - **NEW**: Specialized reminder management through Reminder Agent
 - **NEW**: Advanced todo and task organization through Todo Agent
+- **NEW**: Seamless multi-turn conversations with memory
 
 ## Prerequisites
 
@@ -213,6 +233,93 @@ Key features:
 - **Seamless Integration**: Maintains conversation flow across agents
 - **Specialized Expertise**: Each agent has focused capabilities
 
+### 5. Conversation Memory System
+
+The conversation memory system maintains context across multi-turn conversations:
+
+```python
+from src.memory import ConversationMemoryManager, ConversationContextManager
+
+# Initialize memory system
+memory_manager = ConversationMemoryManager(memory_type="buffer")
+context_manager = ConversationContextManager()
+
+# Start conversation
+memory_manager.start_conversation()
+context_manager.start_conversation()
+
+# Add messages to memory
+memory_manager.add_message("user", "Set a reminder for tomorrow")
+memory_manager.add_message("assistant", "What time would you like the reminder?")
+
+# Check context for routing
+target_agent = context_manager.should_route_to_agent("6am", ["reminder_agent"])
+```
+
+Key features:
+
+- **Persistent Context**: Remembers conversation state across turns
+- **Intent Detection**: Automatically detects reminder and todo intents
+- **Context-Aware Routing**: Routes messages based on conversation context
+- **Pending Request Management**: Tracks incomplete requests
+- **Conversation Persistence**: Saves and loads conversation history
+
+#### Memory Types
+
+Remo supports different memory types for different use cases:
+
+**Buffer Memory (Default - Short-term)**:
+
+```python
+# Perfect for multi-turn task completion
+memory_manager = ConversationMemoryManager(memory_type="buffer")
+```
+
+- ✅ Preserves exact conversation history
+- ✅ Fast access to recent messages
+- ✅ Perfect for "set alarm" → "6am" scenarios
+- ❌ Memory usage grows with conversation length
+
+**Summary Memory (Long-term)**:
+
+```python
+# For extended conversations
+memory_manager = ConversationMemoryManager(memory_type="summary", max_tokens=2000)
+```
+
+- ✅ Constant memory usage
+- ✅ Handles very long conversations
+- ✅ Good for persistent user sessions
+- ⚠️ May lose specific details in summarization
+
+**Auto-switching Memory**:
+
+```python
+# Automatically switch to summary memory for long conversations
+if len(memory_manager.get_recent_messages()) > 50:
+    memory_manager = ConversationMemoryManager(memory_type="summary")
+```
+
+#### Memory Configuration
+
+Configure memory based on your needs:
+
+```python
+# For daily personal assistant use (recommended)
+memory_manager = ConversationMemoryManager(memory_type="buffer")
+
+# For extended conversations
+memory_manager = ConversationMemoryManager(
+    memory_type="summary",
+    max_tokens=2000
+)
+
+# Monitor memory usage
+message_count = len(memory_manager.get_recent_messages())
+if message_count > 50:
+    print("Consider switching to summary memory")
+```
+
 ## Project Structure
 
 ```
@@ -231,8 +338,13 @@ Lang-Agent/
 │   │       └── todo_tools.py
 │   ├── orchestration/    # Multi-agent coordination
 │   │   └── supervisor.py # Supervisor orchestrator
+│   ├── memory/          # Conversation memory system
+│   │   ├── conversation_memory.py
+│   │   ├── context_manager.py
+│   │   └── memory_utils.py
 │   └── utils/           # Shared utilities
 │       └── state.py     # State management
+├── conversations/        # Saved conversation files
 ├── reminders.json        # Reminder storage (auto-generated)
 ├── todos.json           # Todo storage (auto-generated)
 └── README.md            # This documentation
@@ -281,10 +393,12 @@ python remo.py
 $ python remo.py
 
 === Remo - Your Advanced AI Assistant ===
-Initializing Remo with multi-agent orchestration...
+Initializing Remo with multi-agent orchestration and conversation memory...
 
 🤖 Remo is ready to assist you!
 🔄 Now powered by specialized agents for reminders and todo management
+🧠 Enhanced with conversation memory for seamless multi-turn interactions
+🆔 Conversation ID: conv_20240115_143022
 
 📋 Available Specialists:
    • Reminder Agent: Manages reminders, alerts, and scheduled tasks
@@ -303,15 +417,38 @@ Remo: I'll add that to your todo list through our task management specialist.
 ✅ Todo added: 'buy groceries' (Priority: Medium, Category: General)
 ```
 
-### Multi-Agent Coordination
+### Multi-Turn Conversation with Memory
 
 ```bash
-You: Set a reminder for my team meeting tomorrow at 10 AM and add "prepare presentation slides" to my high priority todos
+You: Set a reminder for my team meeting tomorrow
+Remo: I'll help you set that reminder. What time would you like the reminder for your team meeting tomorrow?
 
-Remo: I'll handle both tasks for you - setting the reminder and adding the todo item.
+You: 10am
+Remo: Perfect! I'll set your reminder for the team meeting tomorrow at 10am.
 
 ✅ Reminder set: 'Team meeting' for 2024-01-16 10:00
-✅ Todo added: 'prepare presentation slides' (Priority: High, Category: Work)
+
+You: Also add "prepare presentation slides" to my high priority todos
+Remo: I'll add that high priority task to your todo list.
+
+✅ Todo added: 'prepare presentation slides' (Priority: High, Category: General)
+```
+
+### Context-Aware Interactions
+
+```bash
+You: Set an alarm for tomorrow
+Remo: I'll help you set that alarm. What time would you like the alarm for tomorrow?
+
+You: 6am
+Remo: Perfect! I'll set your alarm for tomorrow at 6am.
+
+✅ Reminder set: 'Alarm' for 2024-01-16 06:00
+
+You: Actually make it 7am
+Remo: I'll update your alarm to 7am tomorrow.
+
+✅ Reminder updated: 'Alarm' for 2024-01-16 07:00
 ```
 
 ## Agent Capabilities
@@ -333,6 +470,13 @@ Remo: I'll handle both tasks for you - setting the reminder and adding the todo 
 - "Update my meeting reminder to 2 PM instead of 1 PM"
 - "Mark my dentist reminder as completed"
 
+**Memory Features:**
+
+- Remembers incomplete reminder requests
+- Recognizes time expressions in follow-up messages
+- Maintains context across conversation turns
+- Handles multi-turn reminder setup
+
 ### Todo Agent
 
 **Tools Available:**
@@ -351,28 +495,46 @@ Remo: I'll handle both tasks for you - setting the reminder and adding the todo 
 - "Mark the grocery shopping todo as complete"
 - "Give me a priority overview of my tasks"
 
+**Memory Features:**
+
+- Remembers incomplete todo requests
+- Recognizes task descriptions in follow-up messages
+- Maintains priority and category context
+- Handles multi-turn todo creation
+
 ## Architecture Details
 
-### Multi-Agent Flow
+### Multi-Agent Flow with Memory
 
 1. **User Input** → `remo.py`
-2. **Request Analysis** → Detects specialized keywords (reminder, todo, etc.)
-3. **Agent Routing** → Routes to appropriate specialized agent(s)
-4. **Specialized Processing** → Agent handles the request with focused expertise
-5. **Response Aggregation** → Supervisor combines responses if multiple agents involved
-6. **User Output** → Returns coordinated response maintaining Remo's personality
+2. **Memory Processing** → Add message to conversation memory
+3. **Intent Detection** → Analyze message for reminder/todo intent
+4. **Context Analysis** → Check for pending requests and conversation context
+5. **Agent Routing** → Route to appropriate specialized agent(s) with context
+6. **Specialized Processing** → Agent handles the request with focused expertise
+7. **Memory Update** → Update conversation memory with response
+8. **Response Aggregation** → Supervisor combines responses if multiple agents involved
+9. **User Output** → Returns coordinated response maintaining Remo's personality
+
+### Memory System Components
+
+- **ConversationMemoryManager**: Manages conversation history using LangChain memory
+- **ConversationContextManager**: Tracks conversation state and pending requests
+- **MemoryUtils**: Provides intent detection and conversation analysis utilities
 
 ### State Management
 
 - **Persistent Storage**: Reminders and todos are stored in JSON files
-- **Conversation History**: Maintained across agent interactions
-- **Context Preservation**: User preferences and patterns are remembered
+- **Conversation History**: Maintained across agent interactions with memory system
+- **Context Preservation**: User preferences, pending requests, and conversation topics are remembered
+- **Conversation Persistence**: Conversations can be saved and loaded
 
 ### Error Handling
 
 - **Graceful Fallbacks**: If specialized agents fail, falls back to basic Remo
-- **Error Recovery**: Continues operation even if individual components fail
+- **Memory Error Recovery**: Continues operation even if memory components fail
 - **User Feedback**: Clear error messages and recovery suggestions
+- **Context Recovery**: Maintains conversation context even after errors
 
 ## Development
 
@@ -385,6 +547,17 @@ To add a new specialized agent:
 3. Add agent tools in a separate `*_tools.py` file
 4. Update `SupervisorOrchestrator` to include the new agent
 5. Update routing logic in `remo.py`
+6. **NEW**: Add memory integration following the [Conversation Memory Guide](./Developer%20guides/conversation_memory_guide.md)
+
+### Adding Memory to Agents
+
+To add conversation memory to a new agent:
+
+1. Follow the [Conversation Memory Guide](./Developer%20guides/conversation_memory_guide.md)
+2. Add intent detection in `MemoryUtils`
+3. Update routing logic to include memory-aware routing
+4. Add context keywords and pending request handling
+5. Test multi-turn conversations
 
 ### Customizing Agent Behavior
 
@@ -394,6 +567,7 @@ Each agent can be customized by:
 - Adding new tools to the agent's toolset
 - Adjusting temperature and other LLM parameters
 - Customizing the supervisor's routing logic
+- **NEW**: Configuring memory behavior and context keywords
 
 ## Contributing
 
@@ -414,7 +588,8 @@ For support and questions:
 - Open an issue on GitHub
 - Check the documentation
 - Review the LangGraph and LangChain documentation
+- **NEW**: Consult the [Conversation Memory Guide](./Developer%20guides/conversation_memory_guide.md) for memory-related questions
 
 ---
 
-**Remo: Making personal assistance accessible to everyone, one conversation at a time.** 🤖✨
+**Remo: Making personal assistance accessible to everyone, one conversation at a time.** 🤖✨🧠
