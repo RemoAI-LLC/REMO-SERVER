@@ -37,7 +37,7 @@ graph_builder = StateGraph(State)
 # Step 3: Initialize the multi-agent orchestrator and memory system
 # ----------------------------------------------------------------
 # Initialize the supervisor orchestrator with specialized agents
-supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4")
+supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
 
 # Initialize the memory system
 memory_manager = ConversationMemoryManager(memory_type="buffer")
@@ -47,7 +47,7 @@ context_manager = ConversationContextManager()
 # ----------------------------------------------------------------------
 # Initialize the LLM for basic Remo functionality
 llm = ChatOpenAI(
-    model="gpt-4",  # Using GPT-4 for more advanced capabilities
+    model="gpt-4o-mini",  # Using GPT-4.1 nano for cost-effective capabilities
     temperature=0.7,
     tags=["remo", "advanced-assistant"]
 )
@@ -296,9 +296,7 @@ def remo(state: State):
             memory_manager.add_message("assistant", fallback_response.content)
             return {"messages": [fallback_response]}
     else:
-        # Use basic Remo for general conversation
-        print("DEBUG: Using basic Remo for general conversation")
-        
+        # Use basic Remo for general conversation (same as CLI logic)
         # Get conversation context for better responses
         conversation_context = context_manager.get_conversation_context()
         recent_messages = memory_manager.get_recent_messages(3)
@@ -328,7 +326,7 @@ def remo(state: State):
         response = llm.invoke(messages_with_context)
         memory_manager.add_message("assistant", response.content)
         
-        return {"messages": [response]}
+        return response.content
 
 # Add the Remo node to our graph
 graph_builder.add_node("remo", remo)
@@ -365,6 +363,172 @@ def stream_graph_updates(user_input: str):
     for event in graph.stream({"messages": messages}):
         for value in event.values():
             print("Remo:", value["messages"][-1].content)
+
+def remo_chat(user_message: str, conversation_history: list = None) -> str:
+    """
+    Expose Remo's main orchestration logic as a function for API use.
+    Uses the same architecture as the CLI: LangGraph, memory, context management, and agent routing.
+    Args:
+        user_message: The user's message
+        conversation_history: List of previous messages (optional)
+    Returns:
+        The assistant's response as a string
+    """
+    # Initialize conversation if needed
+    if not context_manager.conversation_start_time:
+        context_manager.start_conversation()
+        memory_manager.start_conversation()
+    
+    # Add conversation history to memory if provided
+    if conversation_history:
+        for msg in conversation_history:
+            if msg.get('role') and msg.get('content'):
+                memory_manager.add_message(msg['role'], msg['content'])
+    
+    # Add current user message to memory
+    memory_manager.add_message("user", user_message)
+    context_manager.update_activity()
+    
+    # Analyze the message for intent
+    is_reminder_intent, reminder_details = MemoryUtils.detect_reminder_intent(user_message)
+    is_todo_intent, todo_details = MemoryUtils.detect_todo_intent(user_message)
+    
+    # Check for context-aware routing
+    available_agents = ["reminder_agent", "todo_agent"]
+    context_agent = context_manager.should_route_to_agent(user_message, available_agents)
+    
+    # Determine if we should route to specialized agents
+    should_route_to_specialized = False
+    target_agent = None
+    
+    # Check for explicit specialized keywords
+    specialized_keywords = [
+        # Reminder-related keywords
+        "reminder", "remind", "alert", "schedule", "appointment", "alarm", "wake up", "meeting",
+        "set", "create", "add reminder", "set reminder", "set alarm", "set appointment",
+        
+        # Todo-related keywords
+        "todo", "task", "project", "organize", "prioritize", "complete", "add to", "add todo",
+        "to do", "to-do", "checklist", "list", "add task", "create task", "mark complete",
+        "finish", "done", "complete task", "todo list", "task list"
+    ]
+    
+    has_explicit_specialized_keywords = any(keyword in user_message.lower() for keyword in specialized_keywords)
+    
+    # Check for context-based routing
+    if context_agent:
+        should_route_to_specialized = True
+        target_agent = context_agent
+    
+    # Check for explicit intent
+    elif is_reminder_intent:
+        should_route_to_specialized = True
+        target_agent = "reminder_agent"
+        context_manager.set_conversation_topic("reminder")
+        context_manager.set_user_intent("set_reminder")
+        
+        # Add context keywords for future reference
+        context_keywords = MemoryUtils.get_context_keywords_for_intent("reminder", reminder_details)
+        context_manager.add_context_keywords(context_keywords)
+        
+        # If reminder intent but missing time, add pending request
+        if not reminder_details.get("has_time"):
+            context_manager.add_pending_request(
+                request_type="set_reminder",
+                agent_name="reminder_agent",
+                required_info=["time"],
+                context={"description": reminder_details.get("description", "")}
+            )
+    
+    elif is_todo_intent:
+        should_route_to_specialized = True
+        target_agent = "todo_agent"
+        context_manager.set_conversation_topic("todo")
+        context_manager.set_user_intent("add_todo")
+        
+        # Add context keywords for future reference
+        context_keywords = MemoryUtils.get_context_keywords_for_intent("todo", todo_details)
+        context_manager.add_context_keywords(context_keywords)
+        
+        # If todo intent but missing task, add pending request
+        if not todo_details.get("has_task"):
+            context_manager.add_pending_request(
+                request_type="add_todo",
+                agent_name="todo_agent",
+                required_info=["task"],
+                context={"priority": todo_details.get("priority", "medium")}
+            )
+    
+    if should_route_to_specialized and target_agent:
+        # Use the supervisor orchestrator for specialized tasks
+        try:
+            # Get conversation history for context
+            recent_messages = memory_manager.get_recent_messages(5)
+            conversation_history_for_agent = []
+            
+            for msg in recent_messages:
+                conversation_history_for_agent.append({
+                    "role": "user" if hasattr(msg, 'type') and msg.type == "human" else "assistant",
+                    "content": msg.content
+                })
+            
+            # Process through the orchestrator
+            agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)
+            
+            # Add assistant response to memory
+            memory_manager.add_message("assistant", agent_response)
+            
+            # Record agent interaction
+            context_manager.add_agent_interaction(
+                agent_name=target_agent,
+                action="process_request",
+                result="success",
+                metadata={"user_message": user_message, "response": agent_response}
+            )
+            
+            # If there was a pending request, resolve it
+            if context_manager.get_pending_request(target_agent):
+                context_manager.resolve_pending_request(target_agent)
+            
+            return agent_response
+            
+        except Exception as e:
+            # Fallback to basic Remo if orchestrator fails
+            fallback_response = llm.invoke([{"role": "user", "content": user_message}])
+            memory_manager.add_message("assistant", fallback_response.content)
+            return fallback_response.content
+    else:
+        # Use basic Remo for general conversation (same as CLI logic)
+        # Get conversation context for better responses
+        conversation_context = context_manager.get_conversation_context()
+        recent_messages = memory_manager.get_recent_messages(3)
+        
+        # Create enhanced system prompt with context
+        enhanced_prompt = REMO_SYSTEM_PROMPT
+        
+        if conversation_context.get("conversation_topic"):
+            enhanced_prompt += f"\n\nCurrent conversation topic: {conversation_context['conversation_topic']}"
+        
+        if conversation_context.get("pending_requests_count", 0) > 0:
+            enhanced_prompt += f"\n\nNote: There are {conversation_context['pending_requests_count']} pending requests that may need completion."
+        
+        # Add recent conversation context
+        if recent_messages:
+            enhanced_prompt += "\n\nRecent conversation context:"
+            for msg in recent_messages[-2:]:  # Last 2 messages for context
+                role = "User" if hasattr(msg, 'type') and msg.type == "human" else "Assistant"
+                enhanced_prompt += f"\n{role}: {msg.content[:100]}..."
+        
+        # Create messages with enhanced context
+        messages_with_context = [
+            {"role": "system", "content": enhanced_prompt},
+            {"role": "user", "content": user_message}
+        ]
+        
+        response = llm.invoke(messages_with_context)
+        memory_manager.add_message("assistant", response.content)
+        
+        return response.content
 
 def main():
     """

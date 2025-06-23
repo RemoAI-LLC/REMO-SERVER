@@ -20,7 +20,7 @@ class ReminderAgent:
     Handles creating, listing, updating, and managing reminders.
     """
     
-    def __init__(self, model_name: str = "gpt-4"):
+    def __init__(self, model_name: str = "gpt-4o-mini"):
         """
         Initialize the Reminder Agent with tools and persona.
         
@@ -85,4 +85,31 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
     
     def get_description(self) -> str:
         """Get a description of what this agent does"""
-        return "Manages reminders, alerts, and scheduled tasks" 
+        return "Manages reminders, alerts, and scheduled tasks"
+    
+    def process(self, user_message: str, reminder_details: dict = None) -> str:
+        """
+        Process a user message and return a response.
+        
+        Args:
+            user_message: The user's message
+            reminder_details: Optional details extracted from the message
+            
+        Returns:
+            The agent's response as a string
+        """
+        try:
+            # Create a simple message structure for the agent
+            messages = [{"role": "user", "content": user_message}]
+            
+            # Invoke the agent
+            response = self.agent.invoke({"messages": messages})
+            
+            # Extract the response content
+            if "messages" in response and response["messages"]:
+                return response["messages"][-1].content
+            else:
+                return "I've processed your reminder request. How else can I help you?"
+                
+        except Exception as e:
+            return f"I encountered an error while processing your reminder request: {str(e)}. Please try again." 

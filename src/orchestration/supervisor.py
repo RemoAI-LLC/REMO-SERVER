@@ -19,7 +19,7 @@ class SupervisorOrchestrator:
     Enhanced with memory integration for better context awareness.
     """
     
-    def __init__(self, model_name: str = "gpt-4"):
+    def __init__(self, model_name: str = "gpt-4o-mini"):
         """
         Initialize the supervisor orchestrator with specialized agents.
         

@@ -145,7 +145,7 @@ LangChain is a framework for developing applications powered by language models.
 from langchain.chat_models import init_chat_model
 
 # Initialize the chat model
-llm = init_chat_model("openai:gpt-4")
+llm = init_chat_model("openai:gpt-4o-mini")
 
 # Example of using the model
 response = llm.invoke([{"role": "user", "content": "Hello!"}])
@@ -220,7 +220,7 @@ The new multi-agent system uses LangGraph Supervisor for coordination:
 from src.orchestration import SupervisorOrchestrator
 
 # Initialize the orchestrator
-orchestrator = SupervisorOrchestrator(model_name="gpt-4")
+orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
 
 # Process requests through specialized agents
 response = orchestrator.process_request("Set a reminder for tomorrow's meeting")

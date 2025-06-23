@@ -29,7 +29,7 @@ def visualize_complete_system():
     
     # Initialize the supervisor orchestrator
     try:
-        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4")
+        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
         print("✅ Multi-agent system initialized successfully")
     except Exception as e:
         print(f"❌ Failed to initialize multi-agent system: {e}")
@@ -233,7 +233,7 @@ def show_system_stats():
     
     # Agent information
     try:
-        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4")
+        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
         agent_info = supervisor_orchestrator.get_agent_info()
         print(f"• Specialized Agents: {len(agent_info)}")
         for agent_name, description in agent_info.items():

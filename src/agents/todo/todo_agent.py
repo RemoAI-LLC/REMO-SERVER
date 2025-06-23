@@ -21,7 +21,7 @@ class TodoAgent:
     Handles creating, organizing, prioritizing, and managing todo items.
     """
     
-    def __init__(self, model_name: str = "gpt-4"):
+    def __init__(self, model_name: str = "gpt-4o-mini"):
         """
         Initialize the Todo Agent with tools and persona.
         
@@ -95,4 +95,31 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
     
     def get_description(self) -> str:
         """Get a description of what this agent does"""
-        return "Manages todo lists, tasks, and project organization" 
+        return "Manages todo lists, tasks, and project organization"
+    
+    def process(self, user_message: str, todo_details: dict = None) -> str:
+        """
+        Process a user message and return a response.
+        
+        Args:
+            user_message: The user's message
+            todo_details: Optional details extracted from the message
+            
+        Returns:
+            The agent's response as a string
+        """
+        try:
+            # Create a simple message structure for the agent
+            messages = [{"role": "user", "content": user_message}]
+            
+            # Invoke the agent
+            response = self.agent.invoke({"messages": messages})
+            
+            # Extract the response content
+            if "messages" in response and response["messages"]:
+                return response["messages"][-1].content
+            else:
+                return "I've processed your todo request. How else can I help you?"
+                
+        except Exception as e:
+            return f"I encountered an error while processing your todo request: {str(e)}. Please try again." 
