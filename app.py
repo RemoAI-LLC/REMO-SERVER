@@ -2,14 +2,16 @@
 Remo API - Full orchestration, memory, and persona logic from remo.py, exposed as a FastAPI server.
 """
 
+import os
+import json
+from datetime import datetime
+from typing import List, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-import os
 from dotenv import load_dotenv
-
-# --- Begin Remo core logic (from remo.py) ---
+import requests
+import base64
 from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START
@@ -146,12 +148,10 @@ def remo_chat(user_message: str, conversation_history: list = None) -> str:
         memory_manager.add_message("assistant", response.content)
         return response.content
 
-# --- End Remo core logic ---
-
 # --- FastAPI API ---
 app = FastAPI(
     title="Remo AI Assistant API",
-    description="API for Remo AI Assistant with multi-agent orchestration",
+    description="Multi-agent AI assistant with conversation memory",
     version="1.0.0"
 )
 
@@ -170,33 +170,41 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     success: bool
+    timestamp: str
     error: Optional[str] = None
 
 @app.get("/")
 async def root():
-    return {"message": "Remo AI Assistant API is running", "status": "healthy"}
+    return {"message": "Remo AI Assistant API is running!"}
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat")
 async def chat(request: ChatRequest):
+    """
+    Chat with Remo AI Assistant
+    """
     try:
+        # Use the same logic as the CLI
         response = remo_chat(request.message, request.conversation_history)
+        
         return ChatResponse(
             response=response,
-            success=True
+            success=True,
+            timestamp=datetime.now().isoformat()
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing message: {str(e)}"
+        print(f"Error in chat endpoint: {e}")
+        return ChatResponse(
+            response="Sorry, I encountered an error. Please try again.",
+            success=False,
+            timestamp=datetime.now().isoformat()
         )
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "service": "Remo AI Assistant API",
-        "version": "1.0.0"
-    }
+    """
+    Health check endpoint
+    """
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 if __name__ == "__main__":
     import uvicorn
