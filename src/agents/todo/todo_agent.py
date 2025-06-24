@@ -95,7 +95,7 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
     
     def get_description(self) -> str:
         """Get a description of what this agent does"""
-        return "Manages todo lists, tasks, and project organization"
+        return "Manages todo lists, tasks, and project organization" 
     
     def process(self, user_message: str, todo_details: dict = None) -> str:
         """

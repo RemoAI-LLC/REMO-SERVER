@@ -85,7 +85,7 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
     
     def get_description(self) -> str:
         """Get a description of what this agent does"""
-        return "Manages reminders, alerts, and scheduled tasks"
+        return "Manages reminders, alerts, and scheduled tasks" 
     
     def process(self, user_message: str, reminder_details: dict = None) -> str:
         """
