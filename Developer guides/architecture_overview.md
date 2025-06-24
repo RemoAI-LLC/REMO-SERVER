@@ -7,7 +7,7 @@ Remo is a multi-agent orchestration system designed for extensibility, clarity, 
 - **Agents**: Specialized, focused on a single domain (e.g., reminders, todos). Each agent has its own tools and persona.
 - **Supervisor Orchestrator**: Routes user requests to the right agent(s) and aggregates responses. Implements the supervisor pattern using LangGraph.
 - **Memory System**: Manages conversation context, state, and multi-turn interactions across agents.
-- **Remo Entrypoint**: The main CLI and user interface, handling input/output and coordinating with the supervisor.
+- **Remo API Entrypoint**: The main API server (`app.py`), handling input/output and coordinating with the supervisor.
 - **Visualization**: Tools to visualize the orchestration graph and agent relationships.
 - **State Management**: Shared state for message passing and context across agents.
 

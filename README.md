@@ -7,15 +7,7 @@ Enhanced with conversation memory for seamless multi-turn interactions.
 
 ## 🚀 Quick Start
 
-### Option 1: CLI Mode
-
-```bash
-cd REMO-SERVER
-source venv/bin/activate
-python remo.py
-```
-
-### Option 2: API Mode (Recommended for Production)
+### Backend (API) Only
 
 ```bash
 cd REMO-SERVER
@@ -24,7 +16,7 @@ python app.py
 # Server runs on http://localhost:8000
 ```
 
-### Option 3: Frontend + Backend
+### Frontend + Backend
 
 ```bash
 # Backend
@@ -259,7 +251,6 @@ npm run build:web
 ```
 REMO-SERVER/
 ├── app.py                 # FastAPI server
-├── remo.py               # CLI interface
 ├── requirements.txt      # Python dependencies
 ├── .env                 # Environment variables
 ├── src/

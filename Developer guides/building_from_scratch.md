@@ -36,18 +36,18 @@ OPENAI_API_KEY=sk-...
 - `src/agents/`: Specialized agents (reminders, todos, etc.)
 - `src/orchestration/`: Supervisor orchestrator
 - `src/utils/`: Shared utilities
-- `remo.py`: Main entrypoint (CLI, routing)
+- `app.py`: Main entrypoint (API server)
 - `visualize_graph.py`: Visualizes the agent orchestration graph
 - `Developer guides/`: Developer documentation
 
-## 6. Run the System
+## 6. Run the API Server
 
 ```bash
-python remo.py
+python app.py
 ```
 
-- Interact with Remo via the CLI.
-- Use specialized keywords to trigger agents (see docs for examples).
+- The server runs on http://localhost:8000
+- Use the `/docs` endpoint for interactive API documentation.
 
 ## 7. Visualize the System
 

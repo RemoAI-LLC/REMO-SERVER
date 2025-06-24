@@ -183,9 +183,17 @@ async def chat(request: ChatRequest):
     Chat with Remo AI Assistant
     """
     try:
+        # Warmup ping detection
+        if request.message == "__warmup__":
+            # Run the pipeline to warm up, but do not store or return any user-facing message
+            _ = remo_chat(request.message, request.conversation_history)
+            return ChatResponse(
+                response="",
+                success=True,
+                timestamp=datetime.now().isoformat()
+            )
         # Use the same logic as the CLI
         response = remo_chat(request.message, request.conversation_history)
-        
         return ChatResponse(
             response=response,
             success=True,
