@@ -15,6 +15,7 @@ from .todo_tools import (
     delete_todo, 
     prioritize_todos
 )
+from typing import List, Dict
 
 class TodoAgent:
     """
@@ -42,7 +43,23 @@ class TodoAgent:
         self.persona = """You are a todo management specialist within the Remo AI assistant ecosystem. 
 Your expertise is in helping users organize, prioritize, and manage their tasks and projects effectively.
 
+IMPORTANT: You have access to specific tools that you MUST use to perform actions:
+- add_todo_wrapper: Use this to add new todos
+- list_todos_wrapper: Use this to show existing todos
+- mark_todo_complete_wrapper: Use this to mark todos as done
+- update_todo_wrapper: Use this to modify existing todos
+- delete_todo_wrapper: Use this to remove todos
+- prioritize_todos_wrapper: Use this to organize todos by priority
+
+CRITICAL RULES:
+1. ALWAYS use the appropriate tool when the user gives clear instructions
+2. When user says "yes", "add it", "confirm", etc. after you asked for confirmation, IMMEDIATELY use add_todo_wrapper
+3. When user asks to "list todos", "show todos", "my todos", IMMEDIATELY use list_todos_wrapper
+4. Never make up or invent todo lists - always use the tools to get real data
+5. Be direct and action-oriented, not overly conversational
+
 Your key characteristics:
+- **Direct**: Use tools immediately when user provides clear instructions
 - **Organized**: Help users structure their tasks logically
 - **Proactive**: Suggest task organization and prioritization
 - **Encouraging**: Motivate users to complete their tasks
@@ -50,30 +67,32 @@ Your key characteristics:
 - **Flexible**: Adapt to different work styles and preferences
 
 Your capabilities:
-- Create and organize todo items
+- Create and organize todo items using add_todo_wrapper
 - Set priorities and categories
-- Track task completion
+- Track task completion using mark_todo_complete_wrapper
 - Provide task recommendations
 - Help with project organization
 - Suggest productivity improvements
 
 When adding todos:
-1. Ask for clear task descriptions
-2. Suggest appropriate priorities
-3. Help categorize tasks effectively
-4. Confirm all details before creating
+1. ALWAYS use add_todo_wrapper to create the todo
+2. If user provides complete details, add immediately
+3. If details are missing, ask briefly, then add when user confirms
+4. When user says "yes", "add it", "confirm", etc., use add_todo_wrapper immediately
 
-When organizing todos:
-1. Show tasks by priority and category
-2. Suggest logical task sequences
-3. Help break down complex projects
-4. Provide completion recommendations
+When listing todos:
+1. ALWAYS use list_todos_wrapper to retrieve the actual todos
+2. Show tasks by priority and category
+3. Provide clear, organized lists
+4. Include relevant details like creation dates
 
 When managing tasks:
-1. Track progress and completion
-2. Update task details as needed
-3. Help prioritize when overwhelmed
+1. Track progress and completion using mark_todo_complete_wrapper
+2. Update task details as needed using update_todo_wrapper
+3. Help prioritize when overwhelmed using prioritize_todos_wrapper
 4. Celebrate completed tasks
+
+CRITICAL: Never make up or invent todo lists. Always use the list_todos_wrapper tool to get the actual user's todos from the database.
 
 Remember: You're part of a larger AI assistant system, so be collaborative and refer users to other specialists when needed. Focus on helping users be more productive and organized."""
 
@@ -93,32 +112,32 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
         
         @tool
         def add_todo_wrapper(task: str, priority: str = "medium", category: str = "general", due_date: str = None) -> str:
-            """Add a new todo item with task description, priority, category, and optional due date."""
+            """Add a new todo item to the user's todo list. Use this when the user wants to create a new task or todo item."""
             return add_todo(task, priority, category, due_date, self.user_id)
         
         @tool
         def list_todos_wrapper(show_completed: bool = False, category: str = None) -> str:
-            """List all todos, optionally filtered by completion status and category."""
+            """List all todos from the user's todo list. Use this when the user asks to see their todos or todo list."""
             return list_todos(show_completed, category, self.user_id)
         
         @tool
         def mark_todo_complete_wrapper(todo_id: str) -> str:
-            """Mark a todo item as completed."""
+            """Mark a todo item as completed. Use this when the user wants to mark a task as done."""
             return mark_todo_complete(todo_id, self.user_id)
         
         @tool
         def update_todo_wrapper(todo_id: str, task: str = None, priority: str = None, category: str = None, due_date: str = None) -> str:
-            """Update an existing todo item's details."""
+            """Update an existing todo item's details. Use this when the user wants to modify a task."""
             return update_todo(todo_id, task, priority, category, due_date, self.user_id)
         
         @tool
         def delete_todo_wrapper(todo_id: str) -> str:
-            """Delete a todo item by ID."""
+            """Delete a todo item by ID. Use this when the user wants to remove a task."""
             return delete_todo(todo_id, self.user_id)
         
         @tool
         def prioritize_todos_wrapper() -> str:
-            """Prioritize and organize todos by importance and urgency."""
+            """Prioritize and organize todos by importance and urgency. Use this when the user wants to see organized todos."""
             return prioritize_todos(self.user_id)
         
         return [
@@ -155,20 +174,28 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
         """Get a description of what this agent does"""
         return "Handles todo lists, task organization, and project management" 
     
-    def process(self, user_message: str, todo_details: dict = None) -> str:
+    def process(self, user_message: str, conversation_history: List[Dict] = None, todo_details: dict = None) -> str:
         """
         Process a user message and return a response.
         
         Args:
             user_message: The user's message
+            conversation_history: Previous conversation messages for context
             todo_details: Optional details extracted from the message
             
         Returns:
             The agent's response as a string
         """
         try:
-            # Create a simple message structure for the agent
-            messages = [{"role": "user", "content": user_message}]
+            # Create messages for the agent
+            messages = []
+            
+            # Add conversation history if provided
+            if conversation_history:
+                messages.extend(conversation_history)
+            
+            # Add the current user input
+            messages.append({"role": "user", "content": user_message})
             
             # Invoke the agent
             response = self.agent.invoke({"messages": messages})

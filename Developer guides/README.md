@@ -18,7 +18,11 @@ A complete step-by-step guide for adding new specialized agents to the Remo mult
 
 ### [Agent Orchestration & Routing](./orchestration_and_routing.md)
 
-Details on how the supervisor orchestrator works, how requests are routed, and how to extend orchestration logic.
+**UPDATED**: Comprehensive guide to the enhanced orchestration system with intent detection, context management, and intelligent routing.
+
+### [Intent Detection & Routing Improvements](./intent_detection_and_routing_improvements.md)
+
+**NEW**: Detailed documentation of the recent improvements to intent detection and routing that resolved todo/reminder confusion issues.
 
 ### [Conversation Memory System](./conversation_memory_guide.md)
 
@@ -32,10 +36,11 @@ How to use the graph visualization tool, LangSmith tracing, and best practices f
 
 1. **Read the [Architecture Overview](./architecture_overview.md)** to understand the big picture
 2. **Follow [Building from Scratch](./building_from_scratch.md)** to set up your environment
-3. **Add or modify agents using [Creating New Agents](./creating_new_agents.md)**
-4. **Learn about orchestration in [Agent Orchestration & Routing](./orchestration_and_routing.md)**
-5. **Understand memory in [Conversation Memory System](./conversation_memory_guide.md)**
-6. **Visualize and debug with [Visualization & Debugging](./visualization_and_debugging.md)**
+3. **Learn about recent improvements in [Intent Detection & Routing Improvements](./intent_detection_and_routing_improvements.md)**
+4. **Add or modify agents using [Creating New Agents](./creating_new_agents.md)**
+5. **Learn about orchestration in [Agent Orchestration & Routing](./orchestration_and_routing.md)**
+6. **Understand memory in [Conversation Memory System](./conversation_memory_guide.md)**
+7. **Visualize and debug with [Visualization & Debugging](./visualization_and_debugging.md)**
 
 ## 🚀 Example Use Cases
 
@@ -57,6 +62,40 @@ The conversation memory system provides:
 - **Conversation Persistence**: Saves and loads conversation history
 - **Memory Types**: Supports buffer (short-term) and summary (long-term) memory
 - **Adaptive Memory**: Can switch between memory types based on conversation length
+
+## 🎯 Intent Detection & Routing Features
+
+The enhanced intent detection and routing system provides:
+
+- **Natural Language Support**: Handles variations like "to do's", "todos", "todo list"
+- **Clarification Detection**: Recognizes when users are correcting routing mistakes
+- **False Positive Prevention**: Prioritizes todo keywords over reminder keywords
+- **Task Extraction**: Intelligently extracts tasks from natural language
+- **Context-Aware Routing**: Maintains conversation context for continuity
+- **Priority-Based Routing**: Intent Detection > Context Routing > General Response
+- **Direct Agent Routing**: Faster response times by avoiding supervisor overhead
+
+### Intent Detection Quick Reference
+
+| Intent Type | Keywords | Patterns | Example |
+|-------------|----------|----------|---------|
+| **Todo** | "todo", "task", "to do", "to do's" | `add.*to.*to do` | "add groceries to my to do's" |
+| **Reminder** | "remind", "reminder", "alarm" | `remind me to.*at` | "remind me to call mom at 6pm" |
+| **Clarification** | "i asked", "i want", "add to do" | `i asked.*to do` | "i asked you to add the to do" |
+
+### Quick Intent Testing
+
+```python
+from src.memory.memory_utils import MemoryUtils
+
+# Test intent detection
+is_todo, todo_details = MemoryUtils.detect_todo_intent("add groceries to my to do's")
+is_reminder, reminder_details = MemoryUtils.detect_reminder_intent("remind me to call mom")
+
+# Extract tasks
+task = MemoryUtils.extract_task_from_message("add going to groceries to my to do's")
+# Returns: "going to groceries"
+```
 
 ### Memory Type Quick Reference
 

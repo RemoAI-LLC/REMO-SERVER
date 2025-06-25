@@ -1,176 +1,848 @@
 """
-DynamoDB Service for Remo
-Handles user-specific data storage and retrieval using DynamoDB.
+Enhanced DynamoDB Service for Remo AI Assistant
+Provides user-specific data storage with proper table structure for reminders, todos, and user details.
+Uses DynamoDB with optimized table design for NoSQL operations.
 """
 
 import boto3
-import json
 import os
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from datetime import datetime
 from botocore.exceptions import ClientError, NoCredentialsError
-from dotenv import load_dotenv
+import json
 
-load_dotenv()
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # Continue without dotenv if not available
 
 class DynamoDBService:
     """
-    Service class for DynamoDB operations in Remo.
-    Handles user-specific conversation memory, context, and preferences.
+    Enhanced DynamoDB service for Remo AI Assistant.
+    Manages user-specific data with proper table structure.
     """
     
     def __init__(self):
-        """Initialize DynamoDB service with credentials from environment."""
-        self.aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
-        self.aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-        self.aws_region = os.getenv('AWS_REGION', 'us-east-1')
-        self.table_name = os.getenv('DYNAMODB_TABLE_NAME', 'remo-user-data')
+        """Initialize DynamoDB service with proper table structure."""
+        self.dynamodb = None
+        self.reminders_table = None
+        self.todos_table = None
+        self.users_table = None
+        self.conversation_table = None
         
         # Initialize DynamoDB client
         try:
-            self.dynamodb = boto3.resource(
-                'dynamodb',
-                aws_access_key_id=self.aws_access_key_id,
-                aws_secret_access_key=self.aws_secret_access_key,
-                region_name=self.aws_region
-            )
-            self.table = self.dynamodb.Table(self.table_name)
-            self._ensure_table_exists()
+            # Try to get credentials from environment
+            aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+            aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+            aws_region = os.getenv('AWS_REGION', 'us-east-1')
+            
+            if aws_access_key_id and aws_secret_access_key:
+                self.dynamodb = boto3.resource(
+                    'dynamodb',
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                    region_name=aws_region
+                )
+            else:
+                # Use default credentials (IAM role, AWS CLI config, etc.)
+                self.dynamodb = boto3.resource('dynamodb', region_name=aws_region)
+            
+            # Ensure all tables exist
+            self._ensure_tables_exist()
+            
         except NoCredentialsError:
-            print("Warning: AWS credentials not found. DynamoDB operations will fail.")
-            self.table = None
+            print("❌ AWS credentials not found. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+            self.dynamodb = None
         except Exception as e:
-            print(f"Error initializing DynamoDB: {e}")
-            self.table = None
+            print(f"❌ Error initializing DynamoDB: {e}")
+            self.dynamodb = None
     
-    def _ensure_table_exists(self):
-        """Ensure the DynamoDB table exists, create if it doesn't."""
+    def _ensure_tables_exist(self):
+        """Ensure all required tables exist, create them if they don't."""
+        if not self.dynamodb:
+            return
+        
         try:
-            self.table.load()
+            # Check and create reminders table
+            self._ensure_reminders_table()
+            
+            # Check and create todos table
+            self._ensure_todos_table()
+            
+            # Check and create users table
+            self._ensure_users_table()
+            
+            # Check and create conversation table
+            self._ensure_conversation_table()
+            
+            print("✅ All DynamoDB tables are ready")
+            
+        except Exception as e:
+            print(f"❌ Error ensuring tables exist: {e}")
+    
+    def _ensure_reminders_table(self):
+        """Ensure reminders table exists."""
+        table_name = 'remo-reminders'
+        
+        try:
+            self.reminders_table = self.dynamodb.Table(table_name)
+            self.reminders_table.load()
+            print(f"✅ Reminders table '{table_name}' exists")
         except ClientError as e:
             if e.response['Error']['Code'] == 'ResourceNotFoundException':
-                self._create_table()
+                print(f"📝 Creating reminders table '{table_name}'...")
+                self._create_reminders_table(table_name)
             else:
                 raise e
     
-    def _create_table(self):
-        """Create the DynamoDB table with proper schema."""
-        try:
-            table = self.dynamodb.create_table(
-                TableName=self.table_name,
-                KeySchema=[
-                    {
-                        'AttributeName': 'user_id',
-                        'KeyType': 'HASH'  # Partition key
-                    },
-                    {
-                        'AttributeName': 'data_type',
-                        'KeyType': 'RANGE'  # Sort key
+    def _create_reminders_table(self, table_name: str):
+        """Create reminders table with proper structure."""
+        table = self.dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'user_id',
+                    'KeyType': 'HASH'  # Partition key
+                },
+                {
+                    'AttributeName': 'reminder_id',
+                    'KeyType': 'RANGE'  # Sort key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'user_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'reminder_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'status',
+                    'AttributeType': 'S'
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST',
+            GlobalSecondaryIndexes=[
+                {
+                    'IndexName': 'status-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'user_id',
+                            'KeyType': 'HASH'
+                        },
+                        {
+                            'AttributeName': 'status',
+                            'KeyType': 'RANGE'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'ALL'
                     }
-                ],
-                AttributeDefinitions=[
-                    {
-                        'AttributeName': 'user_id',
-                        'AttributeType': 'S'
-                    },
-                    {
-                        'AttributeName': 'data_type',
-                        'AttributeType': 'S'
-                    }
-                ],
-                BillingMode='PAY_PER_REQUEST'
-            )
-            
-            # Wait for table to be created
-            table.meta.client.get_waiter('table_exists').wait(TableName=self.table_name)
-            print(f"Created DynamoDB table: {self.table_name}")
-            
-        except Exception as e:
-            print(f"Error creating table: {e}")
+                }
+            ]
+        )
+        
+        # Wait for table to be created
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        self.reminders_table = table
+        print(f"✅ Reminders table '{table_name}' created successfully")
     
-    def save_conversation_memory(self, user_id: str, conversation_data: Dict) -> bool:
+    def _ensure_todos_table(self):
+        """Ensure todos table exists."""
+        table_name = 'remo-todos'
+        
+        try:
+            self.todos_table = self.dynamodb.Table(table_name)
+            self.todos_table.load()
+            print(f"✅ Todos table '{table_name}' exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating todos table '{table_name}'...")
+                self._create_todos_table(table_name)
+            else:
+                raise e
+    
+    def _create_todos_table(self, table_name: str):
+        """Create todos table with proper structure."""
+        table = self.dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'user_id',
+                    'KeyType': 'HASH'  # Partition key
+                },
+                {
+                    'AttributeName': 'todo_id',
+                    'KeyType': 'RANGE'  # Sort key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'user_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'todo_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'status',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'priority',
+                    'AttributeType': 'S'
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST',
+            GlobalSecondaryIndexes=[
+                {
+                    'IndexName': 'status-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'user_id',
+                            'KeyType': 'HASH'
+                        },
+                        {
+                            'AttributeName': 'status',
+                            'KeyType': 'RANGE'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'ALL'
+                    }
+                },
+                {
+                    'IndexName': 'priority-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'user_id',
+                            'KeyType': 'HASH'
+                        },
+                        {
+                            'AttributeName': 'priority',
+                            'KeyType': 'RANGE'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'ALL'
+                    }
+                }
+            ]
+        )
+        
+        # Wait for table to be created
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        self.todos_table = table
+        print(f"✅ Todos table '{table_name}' created successfully")
+    
+    def _ensure_users_table(self):
+        """Ensure users table exists."""
+        table_name = 'remo-users'
+        
+        try:
+            self.users_table = self.dynamodb.Table(table_name)
+            self.users_table.load()
+            print(f"✅ Users table '{table_name}' exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating users table '{table_name}'...")
+                self._create_users_table(table_name)
+            else:
+                raise e
+    
+    def _create_users_table(self, table_name: str):
+        """Create users table with proper structure."""
+        table = self.dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'privy_id',
+                    'KeyType': 'HASH'  # Partition key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'privy_id',
+                    'AttributeType': 'S'
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST'
+        )
+        
+        # Wait for table to be created
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        self.users_table = table
+        print(f"✅ Users table '{table_name}' created successfully")
+    
+    def _ensure_conversation_table(self):
+        """Ensure conversation table exists."""
+        table_name = 'remo-conversations'
+        
+        try:
+            self.conversation_table = self.dynamodb.Table(table_name)
+            self.conversation_table.load()
+            print(f"✅ Conversations table '{table_name}' exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating conversations table '{table_name}'...")
+                self._create_conversation_table(table_name)
+            else:
+                raise e
+    
+    def _create_conversation_table(self, table_name: str):
+        """Create conversation table with proper structure."""
+        table = self.dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'user_id',
+                    'KeyType': 'HASH'  # Partition key
+                },
+                {
+                    'AttributeName': 'timestamp',
+                    'KeyType': 'RANGE'  # Sort key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'user_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'timestamp',
+                    'AttributeType': 'S'
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST'
+        )
+        
+        # Wait for table to be created
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        self.conversation_table = table
+        print(f"✅ Conversations table '{table_name}' created successfully")
+        
+        # Enable TTL on the table
+        try:
+            self.dynamodb.meta.client.update_time_to_live(
+                TableName=table_name,
+                TimeToLiveSpecification={
+                    'Enabled': True,
+                    'AttributeName': 'ttl'
+                }
+            )
+            print(f"✅ TTL enabled for '{table_name}' on attribute 'ttl'")
+        except Exception as e:
+            print(f"⚠️  Could not enable TTL for '{table_name}': {e}")
+    
+    # ===== REMINDERS METHODS =====
+    
+    def save_reminder(self, user_id: str, reminder_data: Dict) -> bool:
         """
-        Save conversation memory for a specific user.
+        Save a reminder to DynamoDB.
         
         Args:
             user_id: Privy user ID
-            conversation_data: Conversation memory data
-            
+            reminder_data: Reminder data with structure:
+                - reminder_id: Unique identifier
+                - title: Reminder title
+                - description: Reminder description
+                - reminding_time: ISO datetime string
+                - status: 'pending', 'done', 'cancelled'
+                - created_at: ISO datetime string
+        
         Returns:
             True if successful, False otherwise
         """
-        if not self.table:
+        if not self.reminders_table:
             return False
         
         try:
             item = {
                 'user_id': user_id,
-                'data_type': 'conversation_memory',
-                'data': conversation_data,
-                'timestamp': datetime.now().isoformat(),
-                'ttl': int(datetime.now().timestamp()) + (30 * 24 * 60 * 60)  # 30 days TTL
+                'reminder_id': reminder_data['reminder_id'],
+                'title': reminder_data['title'],
+                'description': reminder_data.get('description', ''),
+                'reminding_time': reminder_data['reminding_time'],
+                'status': reminder_data.get('status', 'pending'),
+                'created_at': reminder_data['created_at'],
+                'updated_at': datetime.now().isoformat(),
+                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
             }
             
-            self.table.put_item(Item=item)
+            self.reminders_table.put_item(Item=item)
             return True
             
         except Exception as e:
-            print(f"Error saving conversation memory: {e}")
+            print(f"Error saving reminder: {e}")
             return False
     
-    def load_conversation_memory(self, user_id: str) -> Optional[Dict]:
+    def get_reminders(self, user_id: str, status: str = None) -> List[Dict]:
         """
-        Load conversation memory for a specific user.
+        Get reminders for a user, optionally filtered by status.
         
         Args:
             user_id: Privy user ID
-            
+            status: Optional status filter ('pending', 'done', 'cancelled')
+        
         Returns:
-            Conversation memory data or None if not found
+            List of reminder dictionaries
         """
-        if not self.table:
-            return None
+        if not self.reminders_table:
+            return []
         
         try:
-            response = self.table.get_item(
-                Key={
-                    'user_id': user_id,
-                    'data_type': 'conversation_memory'
-                }
-            )
+            if status:
+                # Use GSI to filter by status
+                response = self.reminders_table.query(
+                    IndexName='status-index',
+                    KeyConditionExpression='user_id = :user_id AND #status = :status',
+                    ExpressionAttributeNames={'#status': 'status'},
+                    ExpressionAttributeValues={
+                        ':user_id': user_id,
+                        ':status': status
+                    }
+                )
+            else:
+                # Get all reminders for user
+                response = self.reminders_table.query(
+                    KeyConditionExpression='user_id = :user_id',
+                    ExpressionAttributeValues={':user_id': user_id}
+                )
             
-            if 'Item' in response:
-                return response['Item']['data']
-            return None
+            return response.get('Items', [])
             
         except Exception as e:
-            print(f"Error loading conversation memory: {e}")
-            return None
+            print(f"Error getting reminders: {e}")
+            return []
     
-    def save_conversation_context(self, user_id: str, context_data: Dict) -> bool:
+    def update_reminder_status(self, user_id: str, reminder_id: str, status: str) -> bool:
         """
-        Save conversation context for a specific user.
+        Update reminder status.
         
         Args:
             user_id: Privy user ID
-            context_data: Conversation context data
-            
+            reminder_id: Reminder ID
+            status: New status ('pending', 'done', 'cancelled')
+        
         Returns:
             True if successful, False otherwise
         """
-        if not self.table:
+        if not self.reminders_table:
+            return False
+        
+        try:
+            self.reminders_table.update_item(
+                Key={
+                    'user_id': user_id,
+                    'reminder_id': reminder_id
+                },
+                UpdateExpression='SET #status = :status, updated_at = :updated_at',
+                ExpressionAttributeNames={'#status': 'status'},
+                ExpressionAttributeValues={
+                    ':status': status,
+                    ':updated_at': datetime.now().isoformat()
+                }
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error updating reminder status: {e}")
+            return False
+    
+    def delete_reminder(self, user_id: str, reminder_id: str) -> bool:
+        """
+        Delete a reminder.
+        
+        Args:
+            user_id: Privy user ID
+            reminder_id: Reminder ID
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.reminders_table:
+            return False
+        
+        try:
+            self.reminders_table.delete_item(
+                Key={
+                    'user_id': user_id,
+                    'reminder_id': reminder_id
+                }
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting reminder: {e}")
+            return False
+    
+    # ===== TODOS METHODS =====
+    
+    def save_todo(self, user_id: str, todo_data: Dict) -> bool:
+        """
+        Save a todo to DynamoDB.
+        
+        Args:
+            user_id: Privy user ID
+            todo_data: Todo data with structure:
+                - todo_id: Unique identifier
+                - title: Todo title
+                - description: Todo description
+                - priority: 'low', 'medium', 'high', 'urgent'
+                - status: 'pending', 'done', 'cancelled'
+                - created_at: ISO datetime string
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.todos_table:
             return False
         
         try:
             item = {
                 'user_id': user_id,
-                'data_type': 'conversation_context',
-                'data': context_data,
-                'timestamp': datetime.now().isoformat(),
+                'todo_id': todo_data['todo_id'],
+                'title': todo_data['title'],
+                'description': todo_data.get('description', ''),
+                'priority': todo_data.get('priority', 'medium'),
+                'status': todo_data.get('status', 'pending'),
+                'created_at': todo_data['created_at'],
+                'updated_at': datetime.now().isoformat(),
+                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
+            }
+            
+            self.todos_table.put_item(Item=item)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving todo: {e}")
+            return False
+    
+    def get_todos(self, user_id: str, status: str = None, priority: str = None) -> List[Dict]:
+        """
+        Get todos for a user, optionally filtered by status and priority.
+        
+        Args:
+            user_id: Privy user ID
+            status: Optional status filter ('pending', 'done', 'cancelled')
+            priority: Optional priority filter ('low', 'medium', 'high', 'urgent')
+        
+        Returns:
+            List of todo dictionaries
+        """
+        if not self.todos_table:
+            return []
+        
+        try:
+            if status:
+                # Use status GSI
+                response = self.todos_table.query(
+                    IndexName='status-index',
+                    KeyConditionExpression='user_id = :user_id AND #status = :status',
+                    ExpressionAttributeNames={'#status': 'status'},
+                    ExpressionAttributeValues={
+                        ':user_id': user_id,
+                        ':status': status
+                    }
+                )
+            elif priority:
+                # Use priority GSI
+                response = self.todos_table.query(
+                    IndexName='priority-index',
+                    KeyConditionExpression='user_id = :user_id AND #priority = :priority',
+                    ExpressionAttributeNames={'#priority': 'priority'},
+                    ExpressionAttributeValues={
+                        ':user_id': user_id,
+                        ':priority': priority
+                    }
+                )
+            else:
+                # Get all todos for user
+                response = self.todos_table.query(
+                    KeyConditionExpression='user_id = :user_id',
+                    ExpressionAttributeValues={':user_id': user_id}
+                )
+            
+            return response.get('Items', [])
+            
+        except Exception as e:
+            print(f"Error getting todos: {e}")
+            return []
+    
+    def update_todo_status(self, user_id: str, todo_id: str, status: str) -> bool:
+        """
+        Update todo status.
+        
+        Args:
+            user_id: Privy user ID
+            todo_id: Todo ID
+            status: New status ('pending', 'done', 'cancelled')
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.todos_table:
+            return False
+        
+        try:
+            self.todos_table.update_item(
+                Key={
+                    'user_id': user_id,
+                    'todo_id': todo_id
+                },
+                UpdateExpression='SET #status = :status, updated_at = :updated_at',
+                ExpressionAttributeNames={'#status': 'status'},
+                ExpressionAttributeValues={
+                    ':status': status,
+                    ':updated_at': datetime.now().isoformat()
+                }
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error updating todo status: {e}")
+            return False
+    
+    def delete_todo(self, user_id: str, todo_id: str) -> bool:
+        """
+        Delete a todo.
+        
+        Args:
+            user_id: Privy user ID
+            todo_id: Todo ID
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.todos_table:
+            return False
+        
+        try:
+            self.todos_table.delete_item(
+                Key={
+                    'user_id': user_id,
+                    'todo_id': todo_id
+                }
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting todo: {e}")
+            return False
+    
+    # ===== USER DETAILS METHODS =====
+    
+    def save_user_details(self, user_data: Dict) -> bool:
+        """
+        Save user details to DynamoDB.
+        
+        Args:
+            user_data: User data with structure:
+                - privy_id: Privy user ID
+                - email: User email
+                - wallet: Wallet address (optional)
+                - first_name: First name
+                - last_name: Last name
+                - phone_number: Phone number (optional)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.users_table:
+            return False
+        
+        try:
+            item = {
+                'privy_id': user_data['privy_id'],
+                'email': user_data.get('email', ''),
+                'wallet': user_data.get('wallet', ''),
+                'first_name': user_data.get('first_name', ''),
+                'last_name': user_data.get('last_name', ''),
+                'phone_number': user_data.get('phone_number', ''),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            self.users_table.put_item(Item=item)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving user details: {e}")
+            return False
+    
+    def get_user_details(self, privy_id: str) -> Optional[Dict]:
+        """
+        Get user details by Privy ID.
+        
+        Args:
+            privy_id: Privy user ID
+        
+        Returns:
+            User details dictionary or None if not found
+        """
+        if not self.users_table:
+            return None
+        
+        try:
+            response = self.users_table.get_item(
+                Key={'privy_id': privy_id}
+            )
+            
+            return response.get('Item')
+            
+        except Exception as e:
+            print(f"Error getting user details: {e}")
+            return None
+    
+    # ===== CONVERSATION MEMORY METHODS =====
+    
+    def save_conversation_message(self, user_id: str, message_data: Dict) -> bool:
+        """
+        Save a conversation message to DynamoDB.
+        
+        Args:
+            user_id: Privy user ID
+            message_data: Message data with structure:
+                - role: 'user' or 'assistant'
+                - content: Message content
+                - timestamp: ISO datetime string
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.conversation_table:
+            return False
+        
+        try:
+            item = {
+                'user_id': user_id,
+                'timestamp': message_data['timestamp'],
+                'role': message_data['role'],
+                'content': message_data['content'],
                 'ttl': int(datetime.now().timestamp()) + (30 * 24 * 60 * 60)  # 30 days TTL
             }
             
-            self.table.put_item(Item=item)
+            self.conversation_table.put_item(Item=item)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving conversation message: {e}")
+            return False
+    
+    def get_conversation_history(self, user_id: str, limit: int = 50) -> List[Dict]:
+        """
+        Get conversation history for a user.
+        
+        Args:
+            user_id: Privy user ID
+            limit: Maximum number of messages to return
+        
+        Returns:
+            List of conversation messages
+        """
+        if not self.conversation_table:
+            return []
+        
+        try:
+            response = self.conversation_table.query(
+                KeyConditionExpression='user_id = :user_id',
+                ExpressionAttributeValues={':user_id': user_id},
+                ScanIndexForward=False,  # Get most recent first
+                Limit=limit
+            )
+            
+            # Reverse to get chronological order
+            messages = response.get('Items', [])
+            messages.reverse()
+            return messages
+            
+        except Exception as e:
+            print(f"Error getting conversation history: {e}")
+            return []
+    
+    # ===== LEGACY COMPATIBILITY METHODS =====
+    
+    def save_reminder_data(self, user_id: str, reminder_data: Dict) -> bool:
+        """Legacy method for backward compatibility."""
+        if 'reminders' in reminder_data:
+            for reminder in reminder_data['reminders']:
+                if 'id' in reminder:
+                    reminder['reminder_id'] = reminder['id']
+                if 'datetime' in reminder:
+                    reminder['reminding_time'] = reminder['datetime']
+                if 'created' in reminder:
+                    reminder['created_at'] = reminder['created']
+                if 'completed' in reminder:
+                    reminder['status'] = 'done' if reminder['completed'] else 'pending'
+                
+                self.save_reminder(user_id, reminder)
+        return True
+    
+    def load_reminder_data(self, user_id: str) -> Optional[Dict]:
+        """Legacy method for backward compatibility."""
+        reminders = self.get_reminders(user_id)
+        return {'reminders': reminders} if reminders else None
+    
+    def save_todo_data(self, user_id: str, todo_data: Dict) -> bool:
+        """Legacy method for backward compatibility."""
+        if 'todos' in todo_data:
+            for todo in todo_data['todos']:
+                if 'id' in todo:
+                    todo['todo_id'] = todo['id']
+                if 'created' in todo:
+                    todo['created_at'] = todo['created']
+                if 'completed' in todo:
+                    todo['status'] = 'done' if todo['completed'] else 'pending'
+                
+                self.save_todo(user_id, todo)
+        return True
+    
+    def load_todo_data(self, user_id: str) -> Optional[Dict]:
+        """Legacy method for backward compatibility."""
+        todos = self.get_todos(user_id)
+        return {'todos': todos} if todos else None
+    
+    def save_conversation_memory(self, user_id: str, conversation_data: Dict) -> bool:
+        """Legacy method for backward compatibility."""
+        if 'messages' in conversation_data:
+            for message in conversation_data['messages']:
+                self.save_conversation_message(user_id, message)
+        return True
+    
+    def load_conversation_memory(self, user_id: str) -> Optional[Dict]:
+        """Legacy method for backward compatibility."""
+        messages = self.get_conversation_history(user_id)
+        return {'messages': messages} if messages else None
+    
+    def save_conversation_context(self, user_id: str, context_data: Dict) -> bool:
+        """
+        Save conversation context to DynamoDB.
+        
+        Args:
+            user_id: Privy user ID
+            context_data: Context data dictionary
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.users_table:
+            return False
+        
+        try:
+            item = {
+                'privy_id': user_id,
+                'conversation_context': context_data,
+                'updated_at': datetime.now().isoformat(),
+                'ttl': int(datetime.now().timestamp()) + (30 * 24 * 60 * 60)  # 30 days TTL
+            }
+            
+            self.users_table.put_item(Item=item)
             return True
             
         except Exception as e:
@@ -179,209 +851,72 @@ class DynamoDBService:
     
     def load_conversation_context(self, user_id: str) -> Optional[Dict]:
         """
-        Load conversation context for a specific user.
+        Load conversation context from DynamoDB.
         
         Args:
             user_id: Privy user ID
-            
+        
         Returns:
-            Conversation context data or None if not found
+            Context data dictionary or None
         """
-        if not self.table:
+        if not self.users_table:
             return None
         
         try:
-            response = self.table.get_item(
-                Key={
-                    'user_id': user_id,
-                    'data_type': 'conversation_context'
-                }
+            response = self.users_table.get_item(
+                Key={'privy_id': user_id}
             )
             
             if 'Item' in response:
-                return response['Item']['data']
+                return response['Item'].get('conversation_context')
+            
             return None
             
         except Exception as e:
             print(f"Error loading conversation context: {e}")
             return None
     
-    def save_user_preferences(self, user_id: str, preferences: Dict) -> bool:
+    # ===== UTILITY METHODS =====
+    
+    def get_user_data_summary(self, user_id: str) -> Dict[str, Any]:
         """
-        Save user preferences for a specific user.
+        Get a summary of all data stored for a user.
         
         Args:
             user_id: Privy user ID
-            preferences: User preferences data
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.table:
-            return False
         
+        Returns:
+            Dictionary with data summary
+        """
         try:
-            item = {
+            reminders = self.get_reminders(user_id)
+            todos = self.get_todos(user_id)
+            conversation_messages = self.get_conversation_history(user_id, limit=10)
+            
+            summary = {
                 'user_id': user_id,
-                'data_type': 'user_preferences',
-                'data': preferences,
-                'timestamp': datetime.now().isoformat(),
-                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
+                'data_types': [],
+                'total_items': 0,
+                'last_updated': None
             }
             
-            self.table.put_item(Item=item)
-            return True
+            if reminders:
+                summary['data_types'].append('reminders')
+                summary['total_items'] += len(reminders)
+            
+            if todos:
+                summary['data_types'].append('todos')
+                summary['total_items'] += len(todos)
+            
+            if conversation_messages:
+                summary['data_types'].append('conversations')
+                summary['total_items'] += len(conversation_messages)
+            
+            return summary
             
         except Exception as e:
-            print(f"Error saving user preferences: {e}")
-            return False
-    
-    def load_user_preferences(self, user_id: str) -> Optional[Dict]:
-        """
-        Load user preferences for a specific user.
-        
-        Args:
-            user_id: Privy user ID
-            
-        Returns:
-            User preferences data or None if not found
-        """
-        if not self.table:
-            return None
-        
-        try:
-            response = self.table.get_item(
-                Key={
-                    'user_id': user_id,
-                    'data_type': 'user_preferences'
-                }
-            )
-            
-            if 'Item' in response:
-                return response['Item']['data']
-            return None
-            
-        except Exception as e:
-            print(f"Error loading user preferences: {e}")
-            return None
-    
-    def save_reminder_data(self, user_id: str, reminder_data: Dict) -> bool:
-        """
-        Save reminder data for a specific user.
-        
-        Args:
-            user_id: Privy user ID
-            reminder_data: Reminder data
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.table:
-            return False
-        
-        try:
-            item = {
-                'user_id': user_id,
-                'data_type': 'reminder_data',
-                'data': reminder_data,
-                'timestamp': datetime.now().isoformat(),
-                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
-            }
-            
-            self.table.put_item(Item=item)
-            return True
-            
-        except Exception as e:
-            print(f"Error saving reminder data: {e}")
-            return False
-    
-    def load_reminder_data(self, user_id: str) -> Optional[Dict]:
-        """
-        Load reminder data for a specific user.
-        
-        Args:
-            user_id: Privy user ID
-            
-        Returns:
-            Reminder data or None if not found
-        """
-        if not self.table:
-            return None
-        
-        try:
-            response = self.table.get_item(
-                Key={
-                    'user_id': user_id,
-                    'data_type': 'reminder_data'
-                }
-            )
-            
-            if 'Item' in response:
-                return response['Item']['data']
-            return None
-            
-        except Exception as e:
-            print(f"Error loading reminder data: {e}")
-            return None
-    
-    def save_todo_data(self, user_id: str, todo_data: Dict) -> bool:
-        """
-        Save todo data for a specific user.
-        
-        Args:
-            user_id: Privy user ID
-            todo_data: Todo data
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.table:
-            return False
-        
-        try:
-            item = {
-                'user_id': user_id,
-                'data_type': 'todo_data',
-                'data': todo_data,
-                'timestamp': datetime.now().isoformat(),
-                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
-            }
-            
-            self.table.put_item(Item=item)
-            return True
-            
-        except Exception as e:
-            print(f"Error saving todo data: {e}")
-            return False
-    
-    def load_todo_data(self, user_id: str) -> Optional[Dict]:
-        """
-        Load todo data for a specific user.
-        
-        Args:
-            user_id: Privy user ID
-            
-        Returns:
-            Todo data or None if not found
-        """
-        if not self.table:
-            return None
-        
-        try:
-            response = self.table.get_item(
-                Key={
-                    'user_id': user_id,
-                    'data_type': 'todo_data'
-                }
-            )
-            
-            if 'Item' in response:
-                return response['Item']['data']
-            return None
-            
-        except Exception as e:
-            print(f"Error loading todo data: {e}")
-            return None
+            print(f"Error getting user data summary: {e}")
+            return {}
     
     def delete_user_data(self, user_id: str, data_type: str = None) -> bool:
         """
@@ -390,76 +925,27 @@ class DynamoDBService:
         Args:
             user_id: Privy user ID
             data_type: Specific data type to delete (optional, deletes all if None)
-            
+        
         Returns:
             True if successful, False otherwise
         """
-        if not self.table:
-            return False
-        
         try:
-            if data_type:
-                # Delete specific data type
-                self.table.delete_item(
-                    Key={
-                        'user_id': user_id,
-                        'data_type': data_type
-                    }
-                )
-            else:
-                # Delete all data for user
-                response = self.table.query(
-                    KeyConditionExpression='user_id = :user_id',
-                    ExpressionAttributeValues={':user_id': user_id}
-                )
-                
-                for item in response['Items']:
-                    self.table.delete_item(
-                        Key={
-                            'user_id': user_id,
-                            'data_type': item['data_type']
-                        }
-                    )
+            if data_type == 'reminders' or data_type is None:
+                reminders = self.get_reminders(user_id)
+                for reminder in reminders:
+                    self.delete_reminder(user_id, reminder['reminder_id'])
+            
+            if data_type == 'todos' or data_type is None:
+                todos = self.get_todos(user_id)
+                for todo in todos:
+                    self.delete_todo(user_id, todo['todo_id'])
+            
+            if data_type == 'conversations' or data_type is None:
+                # For conversations, we'll let TTL handle cleanup
+                pass
             
             return True
             
         except Exception as e:
             print(f"Error deleting user data: {e}")
-            return False
-    
-    def get_user_data_summary(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get a summary of all data stored for a user.
-        
-        Args:
-            user_id: Privy user ID
-            
-        Returns:
-            Dictionary with data summary
-        """
-        if not self.table:
-            return {}
-        
-        try:
-            response = self.table.query(
-                KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': user_id}
-            )
-            
-            summary = {
-                'user_id': user_id,
-                'data_types': [],
-                'total_items': len(response['Items']),
-                'last_updated': None
-            }
-            
-            for item in response['Items']:
-                summary['data_types'].append(item['data_type'])
-                if not summary['last_updated'] or item['timestamp'] > summary['last_updated']:
-                    summary['last_updated'] = item['timestamp']
-            
-            return summary
-            
-        except Exception as e:
-            print(f"Error getting user data summary: {e}")
-            return {} 
+            return False 

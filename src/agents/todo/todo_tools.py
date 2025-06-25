@@ -1,7 +1,7 @@
 """
 Todo Tools
 Provides functions for creating, managing, and organizing todo items and tasks.
-Uses DynamoDB for user-specific storage.
+Uses enhanced DynamoDB service with proper table structure.
 """
 
 from typing import Dict, List, Optional
@@ -17,123 +17,94 @@ from utils.dynamodb_service import DynamoDBService
 # Initialize DynamoDB service
 dynamodb_service = DynamoDBService()
 
-def _load_todos(user_id: str = None) -> List[Dict]:
-    """Load todos for a specific user from DynamoDB"""
-    if not user_id:
-        return []
-    
-    try:
-        todo_data = dynamodb_service.load_todo_data(user_id)
-        return todo_data.get("todos", []) if todo_data else []
-    except Exception as e:
-        print(f"Error loading todos for user {user_id}: {e}")
-        return []
-
-def _save_todos(user_id: str, todos: List[Dict]) -> bool:
-    """Save todos for a specific user to DynamoDB"""
-    if not user_id:
-        return False
-    
-    try:
-        todo_data = {
-            "todos": todos,
-            "last_updated": datetime.now().isoformat()
-        }
-        return dynamodb_service.save_todo_data(user_id, todo_data)
-    except Exception as e:
-        print(f"Error saving todos for user {user_id}: {e}")
-        return False
-
-def add_todo(title: str, description: str = "", priority: str = "medium", category: str = "general", user_id: str = None) -> str:
+def add_todo(task: str, priority: str = "medium", category: str = "general", due_date: str = None, user_id: str = None) -> str:
     """
-    Add a new todo item with title, description, priority, and category.
+    Add a new todo item with task description, priority, category, and optional due date.
     
     Args:
-        title: The title/name of the todo item
-        description: Optional description of the task
+        task: The task description
         priority: Priority level (low, medium, high, urgent)
         category: Category for organization (work, personal, shopping, etc.)
+        due_date: Optional due date (ISO format or natural language)
         user_id: User ID for user-specific storage
     
     Returns:
         Confirmation message with todo details
     """
+    if not user_id:
+        return "❌ User ID is required to add todos"
+    
     # Validate priority
     valid_priorities = ["low", "medium", "high", "urgent"]
     if priority.lower() not in valid_priorities:
         priority = "medium"
     
-    todos = _load_todos(user_id)
+    try:
+        # Create todo data with new structure
+        todo_data = {
+            "todo_id": f"todo_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_id[-8:]}",
+            "title": task,
+            "description": task,  # Use task as description for now
+            "priority": priority.lower(),
+            "status": "pending",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        # Save to DynamoDB using new structure
+        if dynamodb_service.save_todo(user_id, todo_data):
+            return f"✅ Todo added: '{task}' (Priority: {priority.title()}, Category: {category.title()})"
+        else:
+            return "❌ Failed to save todo to database"
     
-    todo = {
-        "id": f"todo_{len(todos) + 1}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        "title": title,
-        "description": description,
-        "priority": priority.lower(),
-        "category": category.lower(),
-        "created": datetime.now().isoformat(),
-        "completed": False,
-        "completed_at": None
-    }
-    
-    todos.append(todo)
-    
-    if _save_todos(user_id, todos):
-        return f"✅ Todo added: '{title}' (Priority: {priority.title()}, Category: {category.title()})"
-    else:
-        return "❌ Failed to save todo to database"
+    except Exception as e:
+        return f"❌ Failed to add todo: {str(e)}"
 
-def list_todos(category: str = None, show_completed: bool = False, priority: str = None, user_id: str = None) -> str:
+def list_todos(show_completed: bool = False, category: str = None, user_id: str = None) -> str:
     """
     List todos with optional filtering by category, completion status, and priority.
     
     Args:
-        category: Filter by specific category
         show_completed: Whether to include completed todos
-        priority: Filter by priority level
+        category: Filter by specific category
         user_id: User ID for user-specific storage
     
     Returns:
         Formatted list of todos
     """
-    todos = _load_todos(user_id)
+    if not user_id:
+        return "❌ User ID is required to list todos"
     
-    if not todos:
-        return "📝 No todos found."
-    
-    # Apply filters
-    if category:
-        todos = [t for t in todos if t.get("category", "").lower() == category.lower()]
-    
-    if priority:
-        todos = [t for t in todos if t.get("priority", "").lower() == priority.lower()]
-    
-    if not show_completed:
-        todos = [t for t in todos if not t.get("completed", False)]
-    
-    if not todos:
-        return "📝 No todos match your criteria."
-    
-    # Sort by priority and creation date
-    priority_order = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
-    todos.sort(key=lambda x: (priority_order.get(x.get("priority", "medium"), 2), x.get("created", "")))
-    
-    result = "📋 Your Todos:\n\n"
-    for todo in todos:
-        status = "✅" if todo.get("completed", False) else "⏳"
-        priority_emoji = {"urgent": "🚨", "high": "🔴", "medium": "🟡", "low": "🟢"}
-        priority_icon = priority_emoji.get(todo.get("priority", "medium"), "🟡")
+    try:
+        # Get todos from DynamoDB using new structure
+        if show_completed:
+            todos = dynamodb_service.get_todos(user_id)
+        else:
+            todos = dynamodb_service.get_todos(user_id, status="pending")
         
-        result += f"{status} {priority_icon} {todo['title']}\n"
-        result += f"   📂 {todo.get('category', 'general').title()}\n"
-        if todo.get("description"):
-            result += f"   📝 {todo['description']}\n"
-        result += f"   📅 Created: {datetime.fromisoformat(todo['created']).strftime('%Y-%m-%d %H:%M')}\n"
-        if todo.get("completed_at"):
-            result += f"   ✅ Completed: {datetime.fromisoformat(todo['completed_at']).strftime('%Y-%m-%d %H:%M')}\n"
-        result += "\n"
+        if not todos:
+            return "📝 No todos found." if show_completed else "📝 No active todos found."
+        
+        # Sort by priority and creation date
+        priority_order = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
+        todos.sort(key=lambda x: (priority_order.get(x.get("priority", "medium"), 2), x.get("created_at", "")))
+        
+        result = "📋 Your Todos:\n\n"
+        for todo in todos:
+            status = "✅" if todo.get("status") == "done" else "⏳"
+            priority_emoji = {"urgent": "🚨", "high": "🔴", "medium": "🟡", "low": "🟢"}
+            priority_icon = priority_emoji.get(todo.get("priority", "medium"), "🟡")
+            
+            result += f"{status} {priority_icon} {todo['title']}\n"
+            if todo.get("description") and todo.get("description") != todo.get("title"):
+                result += f"   📝 {todo['description']}\n"
+            result += f"   📅 Created: {datetime.fromisoformat(todo['created_at']).strftime('%Y-%m-%d %H:%M')}\n"
+            result += f"   🆔 {todo['todo_id']}\n"
+            result += "\n"
+        
+        return result
     
-    return result
+    except Exception as e:
+        return f"❌ Error listing todos: {str(e)}"
 
 def mark_todo_complete(todo_id: str, user_id: str = None) -> str:
     """
@@ -146,19 +117,18 @@ def mark_todo_complete(todo_id: str, user_id: str = None) -> str:
     Returns:
         Confirmation message
     """
-    todos = _load_todos(user_id)
+    if not user_id:
+        return "❌ User ID is required to mark todos complete"
     
-    for todo in todos:
-        if todo["id"] == todo_id:
-            todo["completed"] = True
-            todo["completed_at"] = datetime.now().isoformat()
-            
-            if _save_todos(user_id, todos):
-                return f"✅ Todo '{todo['title']}' marked as completed!"
-            else:
-                return "❌ Failed to save todo completion"
+    try:
+        # Update todo status
+        if dynamodb_service.update_todo_status(user_id, todo_id, "done"):
+            return f"✅ Todo marked as completed!"
+        else:
+            return "❌ Failed to mark todo as complete"
     
-    return f"❌ Todo with ID '{todo_id}' not found"
+    except Exception as e:
+        return f"❌ Error marking todo complete: {str(e)}"
 
 def update_todo(todo_id: str, title: str = None, description: str = None, priority: str = None, category: str = None, user_id: str = None) -> str:
     """
@@ -175,27 +145,42 @@ def update_todo(todo_id: str, title: str = None, description: str = None, priori
     Returns:
         Confirmation message
     """
-    todos = _load_todos(user_id)
+    if not user_id:
+        return "❌ User ID is required to update todos"
     
-    for todo in todos:
-        if todo["id"] == todo_id:
-            if title:
-                todo["title"] = title
-            if description is not None:
-                todo["description"] = description
-            if priority:
-                valid_priorities = ["low", "medium", "high", "urgent"]
-                if priority.lower() in valid_priorities:
-                    todo["priority"] = priority.lower()
-            if category:
-                todo["category"] = category.lower()
-            
-            if _save_todos(user_id, todos):
-                return f"✅ Todo '{todo['title']}' updated successfully"
-            else:
-                return "❌ Failed to save todo update"
+    try:
+        # Get all todos for the user
+        todos = dynamodb_service.get_todos(user_id)
+        
+        # Find the specific todo
+        target_todo = None
+        for todo in todos:
+            if todo["todo_id"] == todo_id:
+                target_todo = todo
+                break
+        
+        if not target_todo:
+            return f"❌ Todo with ID '{todo_id}' not found"
+        
+        # Update fields
+        updated_data = target_todo.copy()
+        if title:
+            updated_data["title"] = title
+        if description is not None:
+            updated_data["description"] = description
+        if priority:
+            valid_priorities = ["low", "medium", "high", "urgent"]
+            if priority.lower() in valid_priorities:
+                updated_data["priority"] = priority.lower()
+        
+        # Save updated todo
+        if dynamodb_service.save_todo(user_id, updated_data):
+            return f"✅ Todo '{updated_data['title']}' updated successfully"
+        else:
+            return "❌ Failed to save todo update"
     
-    return f"❌ Todo with ID '{todo_id}' not found"
+    except Exception as e:
+        return f"❌ Error updating todo: {str(e)}"
 
 def delete_todo(todo_id: str, user_id: str = None) -> str:
     """
@@ -208,90 +193,76 @@ def delete_todo(todo_id: str, user_id: str = None) -> str:
     Returns:
         Confirmation message
     """
-    todos = _load_todos(user_id)
+    if not user_id:
+        return "❌ User ID is required to delete todos"
     
-    for i, todo in enumerate(todos):
-        if todo["id"] == todo_id:
-            deleted_title = todo["title"]
-            todos.pop(i)
-            
-            if _save_todos(user_id, todos):
-                return f"✅ Todo '{deleted_title}' deleted successfully"
-            else:
-                return "❌ Failed to save todo deletion"
+    try:
+        # Get all todos for the user
+        todos = dynamodb_service.get_todos(user_id)
+        
+        # Find the specific todo
+        target_todo = None
+        for todo in todos:
+            if todo["todo_id"] == todo_id:
+                target_todo = todo
+                break
+        
+        if not target_todo:
+            return f"❌ Todo with ID '{todo_id}' not found"
+        
+        # Delete the todo
+        if dynamodb_service.delete_todo(user_id, todo_id):
+            return f"✅ Todo '{target_todo['title']}' deleted successfully"
+        else:
+            return "❌ Failed to delete todo"
     
-    return f"❌ Todo with ID '{todo_id}' not found"
+    except Exception as e:
+        return f"❌ Error deleting todo: {str(e)}"
 
 def prioritize_todos(user_id: str = None) -> str:
     """
-    Show todos organized by priority with recommendations.
+    Prioritize and organize todos by importance and urgency.
     
     Args:
         user_id: User ID for user-specific storage
     
     Returns:
-        Prioritized list with recommendations
+        Formatted prioritized todo list
     """
-    todos = _load_todos(user_id)
+    if not user_id:
+        return "❌ User ID is required to prioritize todos"
     
-    if not todos:
-        return "📝 No todos found to prioritize."
+    try:
+        # Get all pending todos
+        todos = dynamodb_service.get_todos(user_id, status="pending")
+        
+        if not todos:
+            return "📝 No active todos to prioritize."
+        
+        # Sort by priority
+        priority_order = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
+        todos.sort(key=lambda x: priority_order.get(x.get("priority", "medium"), 2))
+        
+        result = "🎯 Prioritized Todo List:\n\n"
+        
+        current_priority = None
+        for todo in todos:
+            priority = todo.get("priority", "medium")
+            
+            # Add priority header if it's a new priority level
+            if priority != current_priority:
+                priority_emoji = {"urgent": "🚨", "high": "🔴", "medium": "🟡", "low": "🟢"}
+                priority_icon = priority_emoji.get(priority, "🟡")
+                result += f"\n{priority_icon} {priority.upper()} PRIORITY:\n"
+                current_priority = priority
+            
+            result += f"   ⏳ {todo['title']}\n"
+            if todo.get("description") and todo.get("description") != todo.get("title"):
+                result += f"      📝 {todo['description']}\n"
+            result += f"      📅 Created: {datetime.fromisoformat(todo['created_at']).strftime('%Y-%m-%d %H:%M')}\n"
+            result += f"      🆔 {todo['todo_id']}\n\n"
+        
+        return result
     
-    # Filter out completed todos
-    active_todos = [t for t in todos if not t.get("completed", False)]
-    
-    if not active_todos:
-        return "🎉 All todos are completed! Great job!"
-    
-    # Group by priority
-    priority_groups = {"urgent": [], "high": [], "medium": [], "low": []}
-    
-    for todo in active_todos:
-        priority = todo.get("priority", "medium")
-        if priority in priority_groups:
-            priority_groups[priority].append(todo)
-    
-    result = "🎯 Priority Recommendations:\n\n"
-    
-    # Show urgent items first
-    if priority_groups["urgent"]:
-        result += "🚨 URGENT (Do these first!):\n"
-        for todo in priority_groups["urgent"]:
-            result += f"   • {todo['title']}\n"
-        result += "\n"
-    
-    # Show high priority items
-    if priority_groups["high"]:
-        result += "🔴 HIGH PRIORITY:\n"
-        for todo in priority_groups["high"]:
-            result += f"   • {todo['title']}\n"
-        result += "\n"
-    
-    # Show medium priority items
-    if priority_groups["medium"]:
-        result += "🟡 MEDIUM PRIORITY:\n"
-        for todo in priority_groups["medium"]:
-            result += f"   • {todo['title']}\n"
-        result += "\n"
-    
-    # Show low priority items
-    if priority_groups["low"]:
-        result += "🟢 LOW PRIORITY:\n"
-        for todo in priority_groups["low"]:
-            result += f"   • {todo['title']}\n"
-        result += "\n"
-    
-    # Add recommendations
-    total_active = len(active_todos)
-    urgent_count = len(priority_groups["urgent"])
-    high_count = len(priority_groups["high"])
-    
-    result += "💡 Recommendations:\n"
-    if urgent_count > 0:
-        result += f"   • Focus on the {urgent_count} urgent items first\n"
-    if high_count > 0:
-        result += f"   • Then tackle the {high_count} high priority items\n"
-    if total_active > 5:
-        result += f"   • Consider breaking down larger tasks (you have {total_active} active todos)\n"
-    
-    return result 
+    except Exception as e:
+        return f"❌ Error prioritizing todos: {str(e)}" 

@@ -14,6 +14,7 @@ from .reminder_tools import (
     delete_reminder, 
     mark_reminder_complete
 )
+from typing import List, Dict
 
 class ReminderAgent:
     """
@@ -142,20 +143,28 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
         """Get a description of what this agent does"""
         return "Manages reminders, alerts, and scheduled tasks" 
     
-    def process(self, user_message: str, reminder_details: dict = None) -> str:
+    def process(self, user_message: str, conversation_history: List[Dict] = None, reminder_details: dict = None) -> str:
         """
         Process a user message and return a response.
         
         Args:
             user_message: The user's message
+            conversation_history: Previous conversation messages for context
             reminder_details: Optional details extracted from the message
             
         Returns:
             The agent's response as a string
         """
         try:
-            # Create a simple message structure for the agent
-            messages = [{"role": "user", "content": user_message}]
+            # Create messages for the agent
+            messages = []
+            
+            # Add conversation history if provided
+            if conversation_history:
+                messages.extend(conversation_history)
+            
+            # Add the current user input
+            messages.append({"role": "user", "content": user_message})
             
             # Invoke the agent
             response = self.agent.invoke({"messages": messages})

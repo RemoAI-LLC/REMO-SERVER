@@ -33,6 +33,11 @@ graph_builder = StateGraph(State)
 # Initialize DynamoDB service
 dynamodb_service = DynamoDBService()
 
+# Global managers (for backward compatibility)
+supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
+memory_manager = ConversationMemoryManager(memory_type="buffer")
+context_manager = ConversationContextManager()
+
 # User-specific managers (will be created per user)
 user_managers = {}
 
@@ -61,15 +66,14 @@ llm = ChatOpenAI(
 REMO_SYSTEM_PROMPT = """You are Remo, a personal AI Assistant that can be hired by every human on the planet. Your mission is to make personal assistance accessible to everyone, not just the wealthy. You are designed to be a genuine, human-like personal assistant that understands and empathizes with people's daily needs and challenges.\n\nYou now have access to specialized AI agents that help you provide even better service:\n\n**Your Specialized Team:**\n- **Reminder Agent**: Manages reminders, alerts, and scheduled tasks\n- **Todo Agent**: Handles todo lists, task organization, and project management\n\nYour key characteristics are:\n\n1. Human-Like Interaction:\n   - Communicate naturally and conversationally\n   - Show empathy and understanding\n   - Use appropriate humor and personality\n   - Maintain a warm, friendly tone while staying professional\n   - Express emotions appropriately in responses\n\n2. Proactive Assistance:\n   - Anticipate needs before they're expressed\n   - Offer helpful suggestions proactively\n   - Remember user preferences and patterns\n   - Follow up on previous conversations\n   - Take initiative in solving problems\n\n3. Professional yet Approachable:\n   - Balance professionalism with friendliness\n   - Be respectful and considerate\n   - Maintain appropriate boundaries\n   - Show genuine interest in helping\n   - Be patient and understanding\n\n4. Task Management & Organization:\n   - Help manage daily schedules and tasks\n   - Organize and prioritize work\n   - Set reminders and follow-ups\n   - Coordinate multiple activities\n   - Keep track of important deadlines\n\n5. Problem Solving & Resourcefulness:\n   - Think creatively to solve problems\n   - Find efficient solutions\n   - Adapt to different situations\n   - Learn from each interaction\n   - Provide practical, actionable advice\n\nYour enhanced capabilities include:\n- Managing emails and communications\n- Scheduling and calendar management\n- Task and project organization\n- Research and information gathering\n- Job application assistance\n- Food ordering and delivery coordination\n- Workflow automation\n- Personal and professional task management\n- Reminder and follow-up management\n- Basic decision support\n- **NEW**: Specialized reminder management through Reminder Agent\n- **NEW**: Advanced todo and task organization through Todo Agent\n- **NEW**: Conversation memory for seamless multi-turn interactions\n\nAlways aim to:\n- Be proactive in offering solutions\n- Maintain a helpful and positive attitude\n- Focus on efficiency and productivity\n- Provide clear, actionable responses\n- Learn from each interaction to better serve the user\n- Show genuine care and understanding\n- Be resourceful and creative\n- Maintain a balance between professional and personal touch\n- **NEW**: Seamlessly coordinate with your specialized agents\n- **NEW**: Remember conversation context and continue seamlessly\n\nRemember: You're not just an AI assistant, but a personal companion that makes everyday tasks effortless and accessible to everyone. Your goal is to provide the same level of personal assistance that was once only available to the wealthy, making it accessible to every human on the planet.\n\nWhen interacting:\n1. Be natural and conversational\n2. Show personality and warmth\n3. Be proactive but not pushy\n4. Remember context and preferences\n5. Express appropriate emotions\n6. Be resourceful and creative\n7. Maintain professionalism while being friendly\n8. Show genuine interest in helping\n9. **NEW**: Coordinate with your specialized agents when needed\n10. **NEW**: Use conversation memory to provide seamless multi-turn interactions\n\nYour responses should feel like talking to a real human personal assistant who is:\n- Professional yet approachable\n- Efficient yet caring\n- Smart yet humble\n- Helpful yet not overbearing\n- Resourceful yet practical\n- **NEW**: Backed by a team of specialized experts\n- **NEW**: With perfect memory of your conversation"""
 
 def remo_chat(user_message: str, conversation_history: list = None, user_id: str = None) -> str:
-    # Get user-specific managers
-    user_manager = get_user_manager(user_id) if user_id else None
-    
-    if user_manager:
+    # Get user-specific managers if user_id provided
+    if user_id:
+        user_manager = get_user_manager(user_id)
         memory_manager = user_manager['memory_manager']
         context_manager = user_manager['context_manager']
         supervisor_orchestrator = user_manager['supervisor_orchestrator']
     else:
-        # Fallback to global managers for backward compatibility
+        # Use global managers for backward compatibility
         memory_manager = ConversationMemoryManager(memory_type="buffer")
         context_manager = ConversationContextManager()
         supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
@@ -111,28 +115,14 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
     ]
     has_explicit_specialized_keywords = any(keyword in user_message.lower() for keyword in specialized_keywords)
     
-    if context_agent:
-        should_route_to_specialized = True
-        target_agent = context_agent
-    elif is_reminder_intent:
-        should_route_to_specialized = True
-        target_agent = "reminder_agent"
-        context_manager.set_conversation_topic("reminder")
-        context_manager.set_user_intent("set_reminder")
-        context_keywords = MemoryUtils.get_context_keywords_for_intent("reminder", reminder_details)
-        context_manager.add_context_keywords(context_keywords)
-        if not reminder_details.get("has_time"):
-            context_manager.add_pending_request(
-                request_type="set_reminder",
-                agent_name="reminder_agent",
-                required_info=["time"],
-                context={"description": reminder_details.get("description", "")}
-            )
-    elif is_todo_intent:
+    # Priority order: Intent detection > Context routing > General response
+    # If we have a clear intent, prioritize it over context routing
+    if is_todo_intent:
         should_route_to_specialized = True
         target_agent = "todo_agent"
         context_manager.set_conversation_topic("todo")
         context_manager.set_user_intent("add_todo")
+        context_manager.set_active_agent("todo_agent")  # Set active agent for context continuity
         context_keywords = MemoryUtils.get_context_keywords_for_intent("todo", todo_details)
         context_manager.add_context_keywords(context_keywords)
         if not todo_details.get("has_task"):
@@ -142,9 +132,30 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
                 required_info=["task"],
                 context={"priority": todo_details.get("priority", "medium")}
             )
+    elif is_reminder_intent:
+        should_route_to_specialized = True
+        target_agent = "reminder_agent"
+        context_manager.set_conversation_topic("reminder")
+        context_manager.set_user_intent("set_reminder")
+        context_manager.set_active_agent("reminder_agent")  # Set active agent for context continuity
+        context_keywords = MemoryUtils.get_context_keywords_for_intent("reminder", reminder_details)
+        context_manager.add_context_keywords(context_keywords)
+        if not reminder_details.get("has_time"):
+            context_manager.add_pending_request(
+                request_type="set_reminder",
+                agent_name="reminder_agent",
+                required_info=["time"],
+                context={"description": reminder_details.get("description", "")}
+            )
+    elif context_agent:
+        # Only use context routing if no clear intent is detected
+        should_route_to_specialized = True
+        target_agent = context_agent
+        context_manager.set_active_agent(context_agent)  # Set active agent for context continuity
     
     if should_route_to_specialized and target_agent:
         try:
+            # Get conversation history for context
             recent_messages = memory_manager.get_recent_messages(5)
             conversation_history_for_agent = []
             for msg in recent_messages:
@@ -153,7 +164,15 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
                     "content": msg.content
                 })
             
-            agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)
+            # Call the agent directly instead of going through supervisor
+            if target_agent == "reminder_agent":
+                agent_response = supervisor_orchestrator.reminder_agent.process(user_message, conversation_history_for_agent)
+            elif target_agent == "todo_agent":
+                agent_response = supervisor_orchestrator.todo_agent.process(user_message, conversation_history_for_agent)
+            else:
+                # Fallback to supervisor for other agents
+                agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)
+            
             memory_manager.add_message("assistant", agent_response)
             context_manager.add_agent_interaction(
                 agent_name=target_agent,

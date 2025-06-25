@@ -56,19 +56,49 @@ class MemoryUtils:
         """
         message_lower = message.lower().strip()
         
-        # Check for specific time patterns
+        # Enhanced time patterns
         time_patterns = [
-            r'(\d{1,2}:\d{2}\s*(?:am|pm)?)',  # 6:30, 6:30am, 6:30 pm
+            # Specific times with AM/PM
+            r'(\d{1,2}:\d{2}\s*(?:am|pm))',  # 6:30am, 6:30 pm
             r'(\d{1,2}\s*(?:am|pm))',  # 6am, 6 pm, 6 AM
+            # Times without AM/PM (assume based on context)
+            r'(\d{1,2}:\d{2})',  # 6:30
+            # O'clock format
             r'(\d{1,2}\s*o\'?clock)',  # 6 o'clock, 6oclock
-            r'(morning|afternoon|evening|night)',  # time periods
-            r'(today|tomorrow)',  # relative dates
+            # Time periods
+            r'(morning|afternoon|evening|night)',
+            # Relative dates with times
+            r'(tomorrow|today)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)',
+            r'(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(tomorrow|today)',
+            # Natural language time expressions
+            r'(in the morning|in the afternoon|in the evening|at night)',
+            r'(early morning|late morning|early afternoon|late afternoon|early evening|late evening)'
         ]
         
         for pattern in time_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                return match.group(1)
+                time_str = match.group(1)
+                
+                # Handle relative dates with times
+                if 'tomorrow' in time_str or 'today' in time_str:
+                    # Extract just the time part
+                    time_match = re.search(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)', time_str)
+                    if time_match:
+                        time_str = time_match.group(1)
+                
+                # Clean up the time string
+                time_str = time_str.strip()
+                
+                # Add AM/PM if missing and it's a reasonable hour
+                if re.match(r'^\d{1,2}(?::\d{2})?$', time_str):
+                    hour = int(time_str.split(':')[0])
+                    if hour < 12:
+                        time_str += ' am'
+                    else:
+                        time_str += ' pm'
+                
+                return time_str
         
         return None
     
@@ -85,16 +115,49 @@ class MemoryUtils:
         """
         message_lower = message.lower().strip()
         
-        # Remove common filler words
-        filler_words = ["add", "create", "make", "new", "todo", "task", "item", "thing"]
+        # Remove common filler words and phrases
+        filler_words = [
+            "add", "create", "make", "new", "todo", "task", "item", "thing",
+            "to my", "to the", "to do", "to-do", "to do's", "todos", "list",
+            "can you", "could you", "please", "i need", "i want", "i'd like"
+        ]
+        
+        # Clean the message
+        cleaned_message = message_lower
         for word in filler_words:
-            message_lower = message_lower.replace(word, "").strip()
+            cleaned_message = cleaned_message.replace(word, "").strip()
+        
+        # Remove extra whitespace and punctuation
+        cleaned_message = re.sub(r'\s+', ' ', cleaned_message).strip()
+        cleaned_message = re.sub(r'^\s*[,.]\s*', '', cleaned_message)
+        cleaned_message = re.sub(r'\s*[,.]\s*$', '', cleaned_message)
         
         # If message is too short after cleaning, return None
-        if len(message_lower) < 2:
+        if len(cleaned_message) < 2:
             return None
         
-        return message_lower
+        # Try to extract the task more intelligently
+        # Look for patterns like "add [task] to my to do's"
+        task_patterns = [
+            r'(?:add|create|make)\s+(.*?)\s+(?:to my|to the)\s+(?:todo|task|list|to do|to-do|to do\'s|todos)',
+            r'(?:add|create|make)\s+(.*?)\s+(?:todo|task|list|to do|to-do|to do\'s|todos)',
+            r'(?:add|create|make)\s+(.*?)$',
+            r'(?:todo|task|item)\s+(?:to|for|about)\s+(.*?)$'
+        ]
+        
+        for pattern in task_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                task = match.group(1).strip()
+                # Clean up the extracted task
+                task = re.sub(r'\s+', ' ', task).strip()
+                task = re.sub(r'^\s*[,.]\s*', '', task)
+                task = re.sub(r'\s*[,.]\s*$', '', task)
+                if len(task) >= 2:
+                    return task
+        
+        # If no pattern match, return the cleaned message
+        return cleaned_message if len(cleaned_message) >= 2 else None
     
     @classmethod
     def detect_reminder_intent(cls, message: str) -> Tuple[bool, Dict]:
@@ -109,26 +172,88 @@ class MemoryUtils:
         """
         message_lower = message.lower()
         
-        # Check for reminder-related keywords
-        has_reminder_keywords = any(
-            keyword in message_lower 
-            for keywords in cls.REMINDER_KEYWORDS.values() 
-            for keyword in keywords
-        )
-        
-        if not has_reminder_keywords:
+        # First check if it's explicitly a todo request (to avoid false positives)
+        todo_keywords = ["todo", "task", "item", "thing", "project", "work", "priority", "to do", "to-do", "to do's", "todos"]
+        if any(keyword in message_lower for keyword in todo_keywords):
+            # If it contains todo keywords, it's likely a todo, not a reminder
             return False, {}
         
-        # Extract details
-        intent_details = {
-            "action": "set_reminder",
-            "has_time": cls.extract_time_from_message(message) is not None,
-            "has_description": any(word in message_lower for word in ["for", "about", "regarding"]),
-            "time": cls.extract_time_from_message(message),
-            "confidence": 0.8
-        }
+        # Enhanced reminder detection patterns (more specific and precise)
+        reminder_patterns = [
+            # Direct reminder requests with explicit reminder keywords
+            r'\b(set|create|add|make|schedule)\s+(?:a\s+)?(?:reminder|remind|alert|alarm|notification)\b',
+            r'\b(reminder|remind|alert|alarm|notification)\s+(?:for|to|about)\b',
+            r'\b(?:can you|could you|please)\s+(?:set|create|add|make)\s+(?:a\s+)?(?:reminder|remind|alert|alarm|notification)\b',
+            r'\b(?:i need|i want|i\'d like)\s+(?:a\s+)?(?:reminder|remind|alert|alarm|notification)\b',
+            # Specific reminder phrases
+            r'\b(?:don\'t forget|remember|remind me)\s+(?:to|about|that)\b',
+            r'\b(?:set|create|add)\s+(?:a\s+)?(?:reminder|remind|alert|alarm|notification)\s+(?:for|about|to)\b',
+            # Time-based patterns with explicit reminder context
+            r'\b(?:remind me|set reminder|create reminder)\s+(?:for|about|to)\b',
+            # Wake up and appointment patterns
+            r'\b(?:wake up|wake me|get up)\s+(?:at|by)\b',
+            r'\b(?:appointment|meeting)\s+(?:at|on|for)\b',
+            # Schedule patterns
+            r'\b(?:schedule|book)\s+(?:an\s+)?(?:appointment|meeting|call)\b'
+        ]
         
-        return True, intent_details
+        # Check for reminder patterns
+        has_reminder_pattern = any(re.search(pattern, message_lower) for pattern in reminder_patterns)
+        
+        # Check for explicit reminder keywords (more specific)
+        reminder_keywords = ["reminder", "remind", "alert", "alarm", "don't forget", "remember", "notification", "wake up", "appointment", "schedule"]
+        has_reminder_keywords = any(keyword in message_lower for keyword in reminder_keywords)
+        
+        # Check for time information
+        has_time_info = cls.extract_time_from_message(message) is not None
+        
+        # Only detect as reminder if we have explicit reminder keywords or patterns
+        # AND it's not a todo request
+        if (has_reminder_pattern or has_reminder_keywords) and not any(todo_keyword in message_lower for todo_keyword in todo_keywords):
+            intent_details = {
+                "action": "set_reminder",
+                "has_time": has_time_info,
+                "has_description": any(word in message_lower for word in ["for", "about", "regarding", "to"]),
+                "time": cls.extract_time_from_message(message),
+                "description": cls.extract_reminder_description(message),
+                "confidence": 0.9 if has_reminder_pattern else 0.8
+            }
+            return True, intent_details
+        
+        return False, {}
+    
+    @classmethod
+    def extract_reminder_description(cls, message: str) -> Optional[str]:
+        """
+        Extract reminder description from a message.
+        
+        Args:
+            message: The user message
+            
+        Returns:
+            Extracted description or None
+        """
+        message_lower = message.lower()
+        
+        # Look for description after "for", "about", "to", etc.
+        description_patterns = [
+            r'\b(?:for|about|to|regarding)\s+(.+?)(?:\s+(?:tomorrow|today|at|on|in|\d{1,2}(?::\d{2})?\s*(?:am|pm)?))',
+            r'\b(?:remind me to|don\'t forget to|remember to)\s+(.+?)(?:\s+(?:tomorrow|today|at|on|in|\d{1,2}(?::\d{2})?\s*(?:am|pm)?))',
+            r'\b(?:add|set|create|make)\s+(?:a\s+)?(?:reminder|remind|alert|alarm)\s+(?:for|about|to)\s+(.+?)(?:\s+(?:tomorrow|today|at|on|in|\d{1,2}(?::\d{2})?\s*(?:am|pm)?))',
+        ]
+        
+        for pattern in description_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                description = match.group(1).strip()
+                # Clean up the description
+                description = re.sub(r'\b(?:add|set|create|make|reminder|remind|alert|alarm)\b', '', description).strip()
+                # Remove trailing "for" if it's at the end
+                description = re.sub(r'\s+for\s*$', '', description).strip()
+                if description and len(description) > 2:
+                    return description
+        
+        return None
     
     @classmethod
     def detect_todo_intent(cls, message: str) -> Tuple[bool, Dict]:
@@ -143,27 +268,94 @@ class MemoryUtils:
         """
         message_lower = message.lower()
         
-        # Check for todo-related keywords
-        has_todo_keywords = any(
-            keyword in message_lower 
-            for keywords in cls.TODO_KEYWORDS.values() 
-            for keyword in keywords
-        )
+        # Enhanced todo detection patterns - more comprehensive
+        todo_patterns = [
+            # Direct todo requests
+            r'\b(add|create|make|new)\s+(?:a\s+)?(?:todo|task|item)\b',
+            r'\b(todo|task|item)\s+(?:to|for|about)\b',
+            r'\b(?:can you|could you|please)\s+(?:add|create|make)\s+(?:a\s+)?(?:todo|task|item)\b',
+            r'\b(?:i need|i want|i\'d like)\s+(?:a\s+)?(?:todo|task|item)\b',
+            # Specific todo phrases - more flexible
+            r'\b(?:add|create|make)\s+(?:.*?)\s+(?:to my|to the)\s+(?:todo|task|list)\b',
+            r'\b(?:add|create|make)\s+(?:.*?)\s+(?:to do|todo|to-do)\b',
+            r'\b(?:add|create|make)\s+(?:.*?)\s+(?:to my|to the)\s+(?:to do|todo|to-do)\b',
+            # "to do's" pattern specifically
+            r'\b(?:add|create|make)\s+(?:.*?)\s+(?:to my|to the)\s+(?:to do\'s|todos)\b',
+            r'\b(?:add|create|make)\s+(?:.*?)\s+(?:to do\'s|todos)\b',
+            # Priority-based patterns
+            r'\b(?:high|medium|low|urgent|important)\s+(?:priority)\s+(?:todo|task|item)\b',
+            r'\b(?:todo|task|item)\s+(?:.*?)\s+(?:high|medium|low|urgent|important)\s+(?:priority)\b',
+            # General task patterns
+            r'\b(?:add|create|make)\s+(?:.*?)\s+(?:task|item|thing)\b',
+            r'\b(?:add|create|make)\s+(?:task|item|thing)\s+(?:.*?)\b'
+        ]
         
-        if not has_todo_keywords:
-            return False, {}
+        # Check for todo patterns
+        has_todo_pattern = any(re.search(pattern, message_lower) for pattern in todo_patterns)
         
-        # Extract details
-        intent_details = {
-            "action": "add_todo",
-            "has_task": cls.extract_task_from_message(message) is not None,
-            "has_priority": any(word in message_lower for word in ["urgent", "important", "high", "medium", "low"]),
-            "has_category": any(word in message_lower for word in ["work", "personal", "shopping", "health"]),
-            "task": cls.extract_task_from_message(message),
-            "confidence": 0.8
-        }
+        # Check for todo-related keywords (more comprehensive)
+        todo_keywords = [
+            "todo", "task", "item", "thing", "project", "work", "priority",
+            "to do", "to-do", "checklist", "list", "add to", "create task",
+            "add task", "mark complete", "finish", "done", "complete task"
+        ]
+        has_todo_keywords = any(keyword in message_lower for keyword in todo_keywords)
         
-        return True, intent_details
+        # Check for priority keywords (strong indicator of todo intent)
+        has_priority_keywords = any(word in message_lower for word in ["urgent", "important", "high", "medium", "low", "priority"])
+        
+        # Check for time information (common in todos)
+        has_time_info = cls.extract_time_from_message(message) is not None
+        
+        # Check for action verbs that indicate todo intent
+        action_verbs = ["add", "create", "make", "new", "set up", "organize", "prioritize"]
+        has_action_verbs = any(verb in message_lower for verb in action_verbs)
+        
+        # If we have todo patterns, strong todo indicators, or action verbs with task context
+        if (has_todo_pattern or 
+            (has_todo_keywords and (has_priority_keywords or has_time_info or has_action_verbs)) or
+            (has_action_verbs and any(word in message_lower for word in ["task", "item", "thing", "project", "work"]))):
+            
+            intent_details = {
+                "action": "add_todo",
+                "has_task": cls.extract_task_from_message(message) is not None,
+                "has_priority": has_priority_keywords,
+                "has_category": any(word in message_lower for word in ["work", "personal", "shopping", "health"]),
+                "has_time": has_time_info,
+                "task": cls.extract_task_from_message(message),
+                "priority": cls.extract_priority_from_message(message),
+                "time": cls.extract_time_from_message(message),
+                "confidence": 0.9 if has_todo_pattern else 0.8
+            }
+            return True, intent_details
+        
+        return False, {}
+    
+    @classmethod
+    def extract_priority_from_message(cls, message: str) -> Optional[str]:
+        """
+        Extract priority information from a message.
+        
+        Args:
+            message: The user message
+            
+        Returns:
+            Extracted priority string or None
+        """
+        message_lower = message.lower()
+        
+        priority_patterns = [
+            r'\b(high|medium|low|urgent|important)\s+(?:priority)\b',
+            r'\b(?:priority)\s+(?:is\s+)?(high|medium|low|urgent|important)\b',
+            r'\b(high|medium|low|urgent|important)\s+(?:priority)\s+(?:todo|task|item)\b'
+        ]
+        
+        for pattern in priority_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                return match.group(1).lower()
+        
+        return None
     
     @classmethod
     def is_context_response(cls, message: str, context_keywords: Set[str]) -> bool:

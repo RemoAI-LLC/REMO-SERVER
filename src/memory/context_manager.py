@@ -8,7 +8,17 @@ from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timedelta
 from enum import Enum
 import json
-from ..utils.dynamodb_service import DynamoDBService
+import sys
+import os
+import re
+
+# Add the parent directory to the path to import DynamoDB service (optional)
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+try:
+    from utils.dynamodb_service import DynamoDBService
+    DYNAMODB_AVAILABLE = True
+except ImportError:
+    DYNAMODB_AVAILABLE = False
 
 class ConversationState(Enum):
     """Enumeration of possible conversation states."""
@@ -19,48 +29,39 @@ class ConversationState(Enum):
     ERROR = "error"
 
 class PendingRequest:
-    """Represents a pending request waiting for additional information."""
+    """Represents a pending request that needs additional information."""
     
-    def __init__(self, request_type: str, agent_name: str, required_info: List[str], 
-                 context: Dict = None, created_at: datetime = None):
+    def __init__(self, request_type: str, agent_name: str, required_info: List[str], context: Dict = None):
         self.request_type = request_type
         self.agent_name = agent_name
         self.required_info = required_info
         self.context = context or {}
-        self.created_at = created_at or datetime.now()
-        self.attempts = 0
-        self.max_attempts = 3
-    
-    def is_expired(self, timeout_minutes: int = 10) -> bool:
-        """Check if the pending request has expired."""
-        timeout_delta = timedelta(minutes=timeout_minutes)
-        return datetime.now() - self.created_at > timeout_delta
+        self.created_at = datetime.now()
+        self.last_updated = datetime.now()
     
     def to_dict(self) -> Dict:
-        """Convert to dictionary for serialization."""
+        """Convert to dictionary for storage."""
         return {
-            "request_type": self.request_type,
-            "agent_name": self.agent_name,
-            "required_info": self.required_info,
-            "context": self.context,
-            "created_at": self.created_at.isoformat(),
-            "attempts": self.attempts,
-            "max_attempts": self.max_attempts
+            'request_type': self.request_type,
+            'agent_name': self.agent_name,
+            'required_info': self.required_info,
+            'context': self.context,
+            'created_at': self.created_at.isoformat(),
+            'last_updated': self.last_updated.isoformat()
         }
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'PendingRequest':
         """Create from dictionary."""
-        pending = cls(
-            request_type=data["request_type"],
-            agent_name=data["agent_name"],
-            required_info=data["required_info"],
-            context=data.get("context", {}),
-            created_at=datetime.fromisoformat(data["created_at"])
+        pending_request = cls(
+            request_type=data['request_type'],
+            agent_name=data['agent_name'],
+            required_info=data['required_info'],
+            context=data.get('context', {})
         )
-        pending.attempts = data.get("attempts", 0)
-        pending.max_attempts = data.get("max_attempts", 3)
-        return pending
+        pending_request.created_at = datetime.fromisoformat(data['created_at'])
+        pending_request.last_updated = datetime.fromisoformat(data['last_updated'])
+        return pending_request
 
 class ConversationContextManager:
     """
@@ -81,16 +82,15 @@ class ConversationContextManager:
         self.conversation_start_time = None
         self.last_activity = None
         
-        # Initialize DynamoDB service for user-specific storage
-        self.dynamodb_service = DynamoDBService()
-        
-        # Load existing context if user_id is provided
-        if self.user_id:
+        # Initialize DynamoDB service if available and user_id provided
+        self.dynamodb_service = None
+        if DYNAMODB_AVAILABLE and user_id:
+            self.dynamodb_service = DynamoDBService()
             self._load_user_context()
     
     def _load_user_context(self):
-        """Load user-specific context from DynamoDB."""
-        if not self.user_id:
+        """Load user-specific context from DynamoDB if available."""
+        if not self.dynamodb_service or not self.user_id:
             return
         
         try:
@@ -117,8 +117,8 @@ class ConversationContextManager:
             print(f"Error loading user context: {e}")
     
     def _save_user_context(self):
-        """Save user-specific context to DynamoDB."""
-        if not self.user_id:
+        """Save user-specific context to DynamoDB if available."""
+        if not self.dynamodb_service or not self.user_id:
             return
         
         try:
@@ -142,9 +142,11 @@ class ConversationContextManager:
             print(f"Error saving user context: {e}")
     
     def set_user_id(self, user_id: str):
-        """Set the user ID and load existing context."""
+        """Set the user ID and initialize DynamoDB service if available."""
         self.user_id = user_id
-        self._load_user_context()
+        if DYNAMODB_AVAILABLE and user_id:
+            self.dynamodb_service = DynamoDBService()
+            self._load_user_context()
     
     def start_conversation(self) -> None:
         """Start a new conversation session."""
@@ -158,16 +160,16 @@ class ConversationContextManager:
         self.conversation_start_time = datetime.now()
         self.last_activity = datetime.now()
         
-        # Save to DynamoDB if user_id is set
-        if self.user_id:
+        # Save to DynamoDB if available
+        if self.dynamodb_service and self.user_id:
             self._save_user_context()
     
     def update_activity(self) -> None:
         """Update the last activity timestamp."""
         self.last_activity = datetime.now()
         
-        # Save to DynamoDB if user_id is set
-        if self.user_id:
+        # Save to DynamoDB if available
+        if self.dynamodb_service and self.user_id:
             self._save_user_context()
     
     def set_conversation_topic(self, topic: str) -> None:
@@ -203,81 +205,48 @@ class ConversationContextManager:
         self.active_agent = agent_name
         self.update_activity()
     
-    def get_pending_request(self, agent_name: str = None) -> Optional[PendingRequest]:
+    def get_pending_request(self, agent_name: str) -> Optional[PendingRequest]:
         """
-        Get the most recent pending request.
+        Get a pending request for a specific agent.
         
         Args:
-            agent_name: Optional agent name to filter by
+            agent_name: Name of the agent
             
         Returns:
-            The most recent pending request or None
+            Pending request or None
         """
-        if not self.pending_requests:
-            return None
-        
-        # Filter by agent if specified
-        if agent_name:
-            for request in reversed(self.pending_requests):
-                if request.agent_name == agent_name and not request.is_expired():
-                    return request
-            return None
-        
-        # Return the most recent non-expired request
-        for request in reversed(self.pending_requests):
-            if not request.is_expired():
+        for request in self.pending_requests:
+            if request.agent_name == agent_name:
                 return request
-        
         return None
     
-    def resolve_pending_request(self, agent_name: str = None) -> Optional[PendingRequest]:
+    def resolve_pending_request(self, agent_name: str) -> bool:
         """
-        Resolve and remove a pending request.
+        Resolve a pending request for a specific agent.
         
         Args:
-            agent_name: Optional agent name to filter by
+            agent_name: Name of the agent
             
         Returns:
-            The resolved request or None
+            True if resolved, False if not found
         """
-        request = self.get_pending_request(agent_name)
-        if request:
-            self.pending_requests.remove(request)
-            
-            # Update state if no more pending requests
-            if not self.pending_requests:
-                self.current_state = ConversationState.IDLE
-                self.active_agent = None
-            
-            self.update_activity()
-        
-        return request
+        for i, request in enumerate(self.pending_requests):
+            if request.agent_name == agent_name:
+                del self.pending_requests[i]
+                
+                # Update state if no more pending requests
+                if not self.pending_requests:
+                    # Don't immediately clear the active agent - keep it for context continuity
+                    self.current_state = ConversationState.AGENT_ACTIVE
+                    # Keep the active_agent set for a few more turns
+                
+                self.update_activity()
+                return True
+        return False
     
-    def add_context_keywords(self, keywords: List[str]) -> None:
-        """Add keywords that provide context for future messages."""
-        self.context_keywords.update(keywords)
-        self.update_activity()
-    
-    def clear_context_keywords(self) -> None:
-        """Clear context keywords."""
-        self.context_keywords.clear()
-        self.update_activity()
-    
-    def has_context_keywords(self, message: str) -> bool:
-        """Check if a message contains any context keywords."""
-        message_lower = message.lower()
-        return any(keyword.lower() in message_lower for keyword in self.context_keywords)
-    
-    def set_active_agent(self, agent_name: str) -> None:
-        """Set the currently active agent."""
-        self.active_agent = agent_name
-        self.current_state = ConversationState.AGENT_ACTIVE
-        self.update_activity()
-    
-    def add_agent_interaction(self, agent_name: str, action: str, 
-                            result: str, metadata: Dict = None) -> None:
+    def add_agent_interaction(self, agent_name: str, action: str, result: str, metadata: Dict = None) -> None:
         """
-        Add an agent interaction to the history.
+        Record an agent interaction.
         
         Args:
             agent_name: Name of the agent
@@ -286,24 +255,74 @@ class ConversationContextManager:
             metadata: Additional metadata
         """
         interaction = {
-            "agent_name": agent_name,
-            "action": action,
-            "result": result,
-            "timestamp": datetime.now().isoformat(),
-            "metadata": metadata or {}
+            'agent_name': agent_name,
+            'action': action,
+            'result': result,
+            'timestamp': datetime.now().isoformat(),
+            'metadata': metadata or {}
         }
         
         self.agent_interaction_history.append(interaction)
         
-        # Keep only the last 50 interactions
+        # Keep only recent interactions (last 50)
         if len(self.agent_interaction_history) > 50:
             self.agent_interaction_history = self.agent_interaction_history[-50:]
         
         self.update_activity()
     
-    def get_recent_interactions(self, count: int = 5) -> List[Dict]:
-        """Get the most recent agent interactions."""
-        return self.agent_interaction_history[-count:] if len(self.agent_interaction_history) > count else self.agent_interaction_history
+    def get_recent_interactions(self, count: int = 10) -> List[Dict]:
+        """
+        Get recent agent interactions.
+        
+        Args:
+            count: Number of interactions to retrieve
+            
+        Returns:
+            List of recent interactions
+        """
+        return self.agent_interaction_history[-count:] if self.agent_interaction_history else []
+    
+    def add_context_keywords(self, keywords: List[str]) -> None:
+        """
+        Add context keywords for routing.
+        
+        Args:
+            keywords: List of keywords to add
+        """
+        self.context_keywords.update(keywords)
+        self.update_activity()
+    
+    def has_context_keywords(self, message: str) -> bool:
+        """
+        Check if a message contains context keywords.
+        
+        Args:
+            message: Message to check
+            
+        Returns:
+            True if message contains context keywords
+        """
+        message_lower = message.lower()
+        return any(keyword.lower() in message_lower for keyword in self.context_keywords)
+    
+    def get_conversation_context(self) -> Dict[str, Any]:
+        """
+        Get the current conversation context.
+        
+        Returns:
+            Dictionary with conversation context
+        """
+        return {
+            'current_state': self.current_state.value,
+            'active_agent': self.active_agent,
+            'conversation_topic': self.conversation_topic,
+            'last_user_intent': self.last_user_intent,
+            'context_keywords': list(self.context_keywords),
+            'pending_requests_count': len(self.pending_requests),
+            'recent_interactions': self.get_recent_interactions(5),
+            'conversation_start_time': self.conversation_start_time.isoformat() if self.conversation_start_time else None,
+            'last_activity': self.last_activity.isoformat() if self.last_activity else None
+        }
     
     def should_route_to_agent(self, message: str, available_agents: List[str]) -> Optional[str]:
         """
@@ -316,6 +335,8 @@ class ConversationContextManager:
         Returns:
             Agent name to route to, or None
         """
+        message_lower = message.lower()
+        
         # Check if there's an active agent and pending request
         if self.active_agent and self.active_agent in available_agents:
             pending_request = self.get_pending_request(self.active_agent)
@@ -330,89 +351,104 @@ class ConversationContextManager:
                 if interaction["agent_name"] in available_agents:
                     return interaction["agent_name"]
         
-        # Check for explicit agent mentions
-        message_lower = message.lower()
-        agent_keywords = {
-            "reminder_agent": ["reminder", "remind", "alert", "schedule", "alarm"],
-            "todo_agent": ["todo", "task", "project", "organize", "checklist"]
-        }
+        # Check if we have an active agent from recent interactions (context continuity)
+        if self.active_agent and self.active_agent in available_agents:
+            # If we have an active agent, stay with it for context continuity
+            recent_interactions = self.get_recent_interactions(2)
+            if recent_interactions and recent_interactions[-1]["agent_name"] == self.active_agent:
+                return self.active_agent
         
-        for agent_name, keywords in agent_keywords.items():
-            if agent_name in available_agents:
-                if any(keyword in message_lower for keyword in keywords):
-                    return agent_name
+        # Check for explicit agent mentions with more intelligent keyword matching
+        # First, check for todo-specific keywords (higher priority to avoid false positives)
+        todo_keywords = ["todo", "task", "project", "organize", "checklist", "to do", "to-do", "to do's", "todos"]
+        if "todo_agent" in available_agents:
+            if any(keyword in message_lower for keyword in todo_keywords):
+                return "todo_agent"
+        
+        # Then check for reminder-specific keywords (more specific to avoid false positives)
+        reminder_keywords = ["reminder", "remind", "alert", "schedule", "alarm", "wake up", "appointment"]
+        if "reminder_agent" in available_agents:
+            if any(keyword in message_lower for keyword in reminder_keywords):
+                # Additional check: if the message also contains todo keywords, prioritize todo
+                if not any(todo_keyword in message_lower for todo_keyword in todo_keywords):
+                    return "reminder_agent"
+        
+        # Check for clarification patterns that indicate the user wants to correct the routing
+        clarification_patterns = [
+            r"i asked you to add.*to do",
+            r"i want.*to do",
+            r"i need.*to do",
+            r"add.*to do",
+            r"create.*to do",
+            r"make.*to do"
+        ]
+        
+        for pattern in clarification_patterns:
+            if re.search(pattern, message_lower):
+                if "todo_agent" in available_agents:
+                    return "todo_agent"
         
         return None
     
-    def get_conversation_context(self) -> Dict[str, Any]:
-        """
-        Get the current conversation context.
+    def clear_context(self) -> None:
+        """Clear all conversation context."""
+        self.current_state = ConversationState.IDLE
+        self.active_agent = None
+        self.pending_requests.clear()
+        self.conversation_topic = None
+        self.last_user_intent = None
+        self.agent_interaction_history.clear()
+        self.context_keywords.clear()
+        self.conversation_start_time = None
+        self.last_activity = None
         
-        Returns:
-            Dictionary with conversation context
-        """
-        context = {
-            "current_state": self.current_state.value,
-            "active_agent": self.active_agent,
-            "conversation_topic": self.conversation_topic,
-            "last_user_intent": self.last_user_intent,
-            "context_keywords": list(self.context_keywords),
-            "conversation_start_time": self.conversation_start_time.isoformat() if self.conversation_start_time else None,
-            "last_activity": self.last_activity.isoformat() if self.last_activity else None,
-            "pending_requests_count": len(self.pending_requests),
-            "recent_interactions": self.get_recent_interactions(5),
-            "user_id": self.user_id
-        }
-        
-        return context
+        # Save to DynamoDB if available
+        if self.dynamodb_service and self.user_id:
+            self._save_user_context()
     
-    def is_conversation_active(self, timeout_minutes: int = 30) -> bool:
+    def get_context_summary(self) -> str:
         """
-        Check if the conversation is still active.
-        
-        Args:
-            timeout_minutes: Minutes of inactivity before considering conversation inactive
-            
-        Returns:
-            True if conversation is active, False otherwise
-        """
-        if not self.last_activity:
-            return False
-        
-        timeout_delta = timedelta(minutes=timeout_minutes)
-        return datetime.now() - self.last_activity < timeout_delta
-    
-    def cleanup_expired_requests(self) -> int:
-        """
-        Clean up expired pending requests.
+        Get a summary of the current context.
         
         Returns:
-            Number of requests cleaned up
+            Context summary string
         """
-        initial_count = len(self.pending_requests)
-        self.pending_requests = [req for req in self.pending_requests if not req.is_expired()]
-        cleaned_count = initial_count - len(self.pending_requests)
+        summary = f"Conversation State: {self.current_state.value}\n"
         
-        if cleaned_count > 0:
-            self.update_activity()
+        if self.active_agent:
+            summary += f"Active Agent: {self.active_agent}\n"
         
-        return cleaned_count
+        if self.conversation_topic:
+            summary += f"Topic: {self.conversation_topic}\n"
+        
+        if self.last_user_intent:
+            summary += f"Last Intent: {self.last_user_intent}\n"
+        
+        if self.pending_requests:
+            summary += f"Pending Requests: {len(self.pending_requests)}\n"
+            for req in self.pending_requests:
+                summary += f"  - {req.agent_name}: {req.request_type} (needs: {', '.join(req.required_info)})\n"
+        
+        if self.context_keywords:
+            summary += f"Context Keywords: {', '.join(self.context_keywords)}\n"
+        
+        return summary
     
     def save_context(self, filepath: str) -> None:
         """
-        Save context to a file (legacy method, now uses DynamoDB).
+        Save context to a file (legacy method, now uses DynamoDB if available).
         
         Args:
             filepath: Filepath (not used with DynamoDB)
         """
-        if self.user_id:
+        if self.dynamodb_service and self.user_id:
             self._save_user_context()
         else:
-            print("No user ID set, cannot save to DynamoDB")
+            print("No user ID set or DynamoDB not available, cannot save context")
     
     def load_context(self, filepath: str) -> bool:
         """
-        Load context from a file (legacy method, now uses DynamoDB).
+        Load context from a file (legacy method, now uses DynamoDB if available).
         
         Args:
             filepath: Filepath (not used with DynamoDB)
@@ -420,8 +456,31 @@ class ConversationContextManager:
         Returns:
             True if successful, False otherwise
         """
-        if self.user_id:
+        if self.dynamodb_service and self.user_id:
             self._load_user_context()
             return True
         else:
-            return False 
+            return False
+    
+    def clear_active_agent_after_delay(self, turns: int = 3) -> None:
+        """
+        Clear the active agent after a certain number of turns.
+        This should be called after a few messages to gradually clear context.
+        
+        Args:
+            turns: Number of turns to wait before clearing (default: 3)
+        """
+        # For now, we'll implement a simple version
+        # In a more sophisticated implementation, you'd track turn counts
+        if self.current_state == ConversationState.AGENT_ACTIVE and not self.pending_requests:
+            # If no pending requests and we've been in AGENT_ACTIVE state, 
+            # gradually transition to IDLE
+            self.current_state = ConversationState.IDLE
+            self.active_agent = None
+            self.update_activity()
+    
+    def set_active_agent(self, agent_name: str) -> None:
+        """Set the currently active agent for context continuity."""
+        self.active_agent = agent_name
+        self.current_state = ConversationState.AGENT_ACTIVE
+        self.update_activity() 

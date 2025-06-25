@@ -1,7 +1,7 @@
 """
 Reminder Tools
 Provides functions for creating, managing, and tracking reminders.
-Uses DynamoDB for user-specific storage.
+Uses enhanced DynamoDB service with proper table structure.
 """
 
 from typing import Dict, List, Optional
@@ -17,33 +17,6 @@ from utils.dynamodb_service import DynamoDBService
 # Initialize DynamoDB service
 dynamodb_service = DynamoDBService()
 
-def _load_reminders(user_id: str = None) -> List[Dict]:
-    """Load reminders for a specific user from DynamoDB"""
-    if not user_id:
-        return []
-    
-    try:
-        reminder_data = dynamodb_service.load_reminder_data(user_id)
-        return reminder_data.get("reminders", []) if reminder_data else []
-    except Exception as e:
-        print(f"Error loading reminders for user {user_id}: {e}")
-        return []
-
-def _save_reminders(user_id: str, reminders: List[Dict]) -> bool:
-    """Save reminders for a specific user to DynamoDB"""
-    if not user_id:
-        return False
-    
-    try:
-        reminder_data = {
-            "reminders": reminders,
-            "last_updated": datetime.now().isoformat()
-        }
-        return dynamodb_service.save_reminder_data(user_id, reminder_data)
-    except Exception as e:
-        print(f"Error saving reminders for user {user_id}: {e}")
-        return False
-
 def set_reminder(title: str, datetime_str: str, description: str = "", user_id: str = None) -> str:
     """
     Set a new reminder with title, datetime, and optional description.
@@ -57,30 +30,27 @@ def set_reminder(title: str, datetime_str: str, description: str = "", user_id: 
     Returns:
         Confirmation message with reminder details
     """
+    if not user_id:
+        return "❌ User ID is required to set reminders"
+    
     try:
-        # Parse datetime (simple implementation - in production use better parsing)
-        if "tomorrow" in datetime_str.lower():
-            reminder_time = datetime.now() + timedelta(days=1)
-        elif "today" in datetime_str.lower():
-            reminder_time = datetime.now()
-        else:
-            # Try to parse as ISO format or specific time
-            reminder_time = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
+        # Parse datetime (enhanced implementation)
+        reminder_time = _parse_datetime(datetime_str)
+        if not reminder_time:
+            return f"❌ Could not parse datetime: {datetime_str}. Please use a clear format like 'tomorrow 10am' or '2024-01-15 14:30'"
         
-        reminders = _load_reminders(user_id)
-        
-        reminder = {
-            "id": f"rem_{len(reminders) + 1}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        # Create reminder data with new structure
+        reminder_data = {
+            "reminder_id": f"rem_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_id[-8:]}",
             "title": title,
-            "datetime": reminder_time.isoformat(),
             "description": description,
-            "created": datetime.now().isoformat(),
-            "completed": False
+            "reminding_time": reminder_time.isoformat(),
+            "status": "pending",
+            "created_at": datetime.now().isoformat()
         }
         
-        reminders.append(reminder)
-        
-        if _save_reminders(user_id, reminders):
+        # Save to DynamoDB using new structure
+        if dynamodb_service.save_reminder(user_id, reminder_data):
             return f"✅ Reminder set: '{title}' for {reminder_time.strftime('%Y-%m-%d %H:%M')}"
         else:
             return "❌ Failed to save reminder to database"
@@ -99,29 +69,37 @@ def list_reminders(show_completed: bool = False, user_id: str = None) -> str:
     Returns:
         Formatted list of reminders
     """
-    reminders = _load_reminders(user_id)
+    if not user_id:
+        return "❌ User ID is required to list reminders"
     
-    if not reminders:
-        return "📝 No reminders found."
+    try:
+        # Get reminders from DynamoDB using new structure
+        if show_completed:
+            reminders = dynamodb_service.get_reminders(user_id)
+        else:
+            reminders = dynamodb_service.get_reminders(user_id, status="pending")
+        
+        if not reminders:
+            return "📝 No reminders found." if show_completed else "📝 No active reminders found."
+        
+        # Sort by reminding time
+        reminders.sort(key=lambda x: x.get('reminding_time', ''))
+        
+        result = "📋 Your Reminders:\n\n"
+        for reminder in reminders:
+            status = "✅" if reminder.get("status") == "done" else "⏰"
+            reminder_time = datetime.fromisoformat(reminder["reminding_time"])
+            result += f"{status} {reminder['title']}\n"
+            result += f"   📅 {reminder_time.strftime('%Y-%m-%d %H:%M')}\n"
+            if reminder.get("description"):
+                result += f"   📝 {reminder['description']}\n"
+            result += f"   🆔 {reminder['reminder_id']}\n"
+            result += "\n"
+        
+        return result
     
-    # Filter reminders based on completion status
-    if not show_completed:
-        reminders = [r for r in reminders if not r.get("completed", False)]
-    
-    if not reminders:
-        return "📝 No active reminders found."
-    
-    result = "📋 Your Reminders:\n\n"
-    for reminder in reminders:
-        status = "✅" if reminder.get("completed", False) else "⏰"
-        reminder_time = datetime.fromisoformat(reminder["datetime"])
-        result += f"{status} {reminder['title']}\n"
-        result += f"   📅 {reminder_time.strftime('%Y-%m-%d %H:%M')}\n"
-        if reminder.get("description"):
-            result += f"   📝 {reminder['description']}\n"
-        result += "\n"
-    
-    return result
+    except Exception as e:
+        return f"❌ Error listing reminders: {str(e)}"
 
 def update_reminder(reminder_id: str, title: str = None, datetime_str: str = None, description: str = None, user_id: str = None) -> str:
     """
@@ -137,27 +115,44 @@ def update_reminder(reminder_id: str, title: str = None, datetime_str: str = Non
     Returns:
         Confirmation message
     """
-    reminders = _load_reminders(user_id)
+    if not user_id:
+        return "❌ User ID is required to update reminders"
     
-    for reminder in reminders:
-        if reminder["id"] == reminder_id:
-            if title:
-                reminder["title"] = title
-            if datetime_str:
-                try:
-                    reminder_time = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
-                    reminder["datetime"] = reminder_time.isoformat()
-                except:
-                    return f"❌ Invalid datetime format: {datetime_str}"
-            if description is not None:
-                reminder["description"] = description
-            
-            if _save_reminders(user_id, reminders):
-                return f"✅ Reminder '{reminder['title']}' updated successfully"
+    try:
+        # Get all reminders for the user
+        reminders = dynamodb_service.get_reminders(user_id)
+        
+        # Find the specific reminder
+        target_reminder = None
+        for reminder in reminders:
+            if reminder["reminder_id"] == reminder_id:
+                target_reminder = reminder
+                break
+        
+        if not target_reminder:
+            return f"❌ Reminder with ID '{reminder_id}' not found"
+        
+        # Update fields
+        updated_data = target_reminder.copy()
+        if title:
+            updated_data["title"] = title
+        if datetime_str:
+            parsed_time = _parse_datetime(datetime_str)
+            if parsed_time:
+                updated_data["reminding_time"] = parsed_time.isoformat()
             else:
-                return "❌ Failed to save updated reminder"
+                return f"❌ Invalid datetime format: {datetime_str}"
+        if description is not None:
+            updated_data["description"] = description
+        
+        # Save updated reminder
+        if dynamodb_service.save_reminder(user_id, updated_data):
+            return f"✅ Reminder '{updated_data['title']}' updated successfully"
+        else:
+            return "❌ Failed to save updated reminder"
     
-    return f"❌ Reminder with ID '{reminder_id}' not found"
+    except Exception as e:
+        return f"❌ Error updating reminder: {str(e)}"
 
 def delete_reminder(reminder_id: str, user_id: str = None) -> str:
     """
@@ -170,19 +165,31 @@ def delete_reminder(reminder_id: str, user_id: str = None) -> str:
     Returns:
         Confirmation message
     """
-    reminders = _load_reminders(user_id)
+    if not user_id:
+        return "❌ User ID is required to delete reminders"
     
-    for i, reminder in enumerate(reminders):
-        if reminder["id"] == reminder_id:
-            deleted_title = reminder["title"]
-            reminders.pop(i)
-            
-            if _save_reminders(user_id, reminders):
-                return f"✅ Reminder '{deleted_title}' deleted successfully"
-            else:
-                return "❌ Failed to save reminder deletion"
+    try:
+        # Get all reminders for the user
+        reminders = dynamodb_service.get_reminders(user_id)
+        
+        # Find the specific reminder
+        target_reminder = None
+        for reminder in reminders:
+            if reminder["reminder_id"] == reminder_id:
+                target_reminder = reminder
+                break
+        
+        if not target_reminder:
+            return f"❌ Reminder with ID '{reminder_id}' not found"
+        
+        # Delete the reminder
+        if dynamodb_service.delete_reminder(user_id, reminder_id):
+            return f"✅ Reminder '{target_reminder['title']}' deleted successfully"
+        else:
+            return "❌ Failed to delete reminder"
     
-    return f"❌ Reminder with ID '{reminder_id}' not found"
+    except Exception as e:
+        return f"❌ Error deleting reminder: {str(e)}"
 
 def mark_reminder_complete(reminder_id: str, user_id: str = None) -> str:
     """
@@ -195,16 +202,87 @@ def mark_reminder_complete(reminder_id: str, user_id: str = None) -> str:
     Returns:
         Confirmation message
     """
-    reminders = _load_reminders(user_id)
+    if not user_id:
+        return "❌ User ID is required to mark reminders complete"
     
-    for reminder in reminders:
-        if reminder["id"] == reminder_id:
-            reminder["completed"] = True
-            reminder["completed_at"] = datetime.now().isoformat()
-            
-            if _save_reminders(user_id, reminders):
-                return f"✅ Reminder '{reminder['title']}' marked as completed"
-            else:
-                return "❌ Failed to save reminder completion"
+    try:
+        # Update reminder status
+        if dynamodb_service.update_reminder_status(user_id, reminder_id, "done"):
+            return f"✅ Reminder marked as completed"
+        else:
+            return "❌ Failed to mark reminder as complete"
     
-    return f"❌ Reminder with ID '{reminder_id}' not found" 
+    except Exception as e:
+        return f"❌ Error marking reminder complete: {str(e)}"
+
+def _parse_datetime(datetime_str: str) -> Optional[datetime]:
+    """
+    Parse datetime string into datetime object.
+    Supports natural language and ISO format.
+    
+    Args:
+        datetime_str: Datetime string to parse
+    
+    Returns:
+        Parsed datetime object or None if parsing fails
+    """
+    try:
+        # Handle natural language
+        datetime_str_lower = datetime_str.lower().strip()
+        
+        if "tomorrow" in datetime_str_lower:
+            base_date = datetime.now() + timedelta(days=1)
+        elif "today" in datetime_str_lower:
+            base_date = datetime.now()
+        elif "next week" in datetime_str_lower:
+            base_date = datetime.now() + timedelta(weeks=1)
+        else:
+            base_date = datetime.now()
+        
+        # Extract time if present
+        time_patterns = [
+            r'(\d{1,2}):(\d{2})\s*(am|pm)?',
+            r'(\d{1,2})\s*(am|pm)',
+            r'(\d{1,2})\.(\d{2})\s*(am|pm)?'
+        ]
+        
+        import re
+        for pattern in time_patterns:
+            match = re.search(pattern, datetime_str_lower)
+            if match:
+                if len(match.groups()) == 3:  # HH:MM AM/PM
+                    hour = int(match.group(1))
+                    minute = int(match.group(2))
+                    ampm = match.group(3)
+                elif len(match.groups()) == 2:  # HH AM/PM
+                    hour = int(match.group(1))
+                    minute = 0
+                    ampm = match.group(2)
+                else:  # HH:MM
+                    hour = int(match.group(1))
+                    minute = int(match.group(2))
+                    ampm = None
+                
+                # Handle AM/PM
+                if ampm:
+                    if ampm == 'pm' and hour != 12:
+                        hour += 12
+                    elif ampm == 'am' and hour == 12:
+                        hour = 0
+                
+                # Set time
+                base_date = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                break
+        
+        # Try ISO format if no natural language patterns found
+        if base_date == datetime.now():
+            try:
+                return datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
+            except:
+                pass
+        
+        return base_date
+    
+    except Exception as e:
+        print(f"Error parsing datetime '{datetime_str}': {e}")
+        return None 
