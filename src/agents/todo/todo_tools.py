@@ -1,33 +1,50 @@
 """
 Todo Tools
 Provides functions for creating, managing, and organizing todo items and tasks.
-Uses simple in-memory storage for demonstration purposes.
+Uses DynamoDB for user-specific storage.
 """
 
 from typing import Dict, List, Optional
 from datetime import datetime
 import json
 import os
+import sys
 
-# In-memory storage for todos (in production, use a proper database)
-TODOS_STORAGE_FILE = "todos.json"
+# Add the parent directory to the path to import DynamoDB service
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from utils.dynamodb_service import DynamoDBService
 
-def _load_todos() -> Dict[str, List[Dict]]:
-    """Load todos from storage file"""
-    if os.path.exists(TODOS_STORAGE_FILE):
-        try:
-            with open(TODOS_STORAGE_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return {"todos": []}
-    return {"todos": []}
+# Initialize DynamoDB service
+dynamodb_service = DynamoDBService()
 
-def _save_todos(todos: Dict[str, List[Dict]]):
-    """Save todos to storage file"""
-    with open(TODOS_STORAGE_FILE, 'w') as f:
-        json.dump(todos, f, indent=2)
+def _load_todos(user_id: str = None) -> List[Dict]:
+    """Load todos for a specific user from DynamoDB"""
+    if not user_id:
+        return []
+    
+    try:
+        todo_data = dynamodb_service.load_todo_data(user_id)
+        return todo_data.get("todos", []) if todo_data else []
+    except Exception as e:
+        print(f"Error loading todos for user {user_id}: {e}")
+        return []
 
-def add_todo(title: str, description: str = "", priority: str = "medium", category: str = "general") -> str:
+def _save_todos(user_id: str, todos: List[Dict]) -> bool:
+    """Save todos for a specific user to DynamoDB"""
+    if not user_id:
+        return False
+    
+    try:
+        todo_data = {
+            "todos": todos,
+            "last_updated": datetime.now().isoformat()
+        }
+        return dynamodb_service.save_todo_data(user_id, todo_data)
+    except Exception as e:
+        print(f"Error saving todos for user {user_id}: {e}")
+        return False
+
+def add_todo(title: str, description: str = "", priority: str = "medium", category: str = "general", user_id: str = None) -> str:
     """
     Add a new todo item with title, description, priority, and category.
     
@@ -36,6 +53,7 @@ def add_todo(title: str, description: str = "", priority: str = "medium", catego
         description: Optional description of the task
         priority: Priority level (low, medium, high, urgent)
         category: Category for organization (work, personal, shopping, etc.)
+        user_id: User ID for user-specific storage
     
     Returns:
         Confirmation message with todo details
@@ -45,8 +63,10 @@ def add_todo(title: str, description: str = "", priority: str = "medium", catego
     if priority.lower() not in valid_priorities:
         priority = "medium"
     
+    todos = _load_todos(user_id)
+    
     todo = {
-        "id": f"todo_{len(_load_todos()['todos']) + 1}",
+        "id": f"todo_{len(todos) + 1}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         "title": title,
         "description": description,
         "priority": priority.lower(),
@@ -56,13 +76,14 @@ def add_todo(title: str, description: str = "", priority: str = "medium", catego
         "completed_at": None
     }
     
-    todos_data = _load_todos()
-    todos_data["todos"].append(todo)
-    _save_todos(todos_data)
+    todos.append(todo)
     
-    return f"✅ Todo added: '{title}' (Priority: {priority.title()}, Category: {category.title()})"
+    if _save_todos(user_id, todos):
+        return f"✅ Todo added: '{title}' (Priority: {priority.title()}, Category: {category.title()})"
+    else:
+        return "❌ Failed to save todo to database"
 
-def list_todos(category: str = None, show_completed: bool = False, priority: str = None) -> str:
+def list_todos(category: str = None, show_completed: bool = False, priority: str = None, user_id: str = None) -> str:
     """
     List todos with optional filtering by category, completion status, and priority.
     
@@ -70,12 +91,12 @@ def list_todos(category: str = None, show_completed: bool = False, priority: str
         category: Filter by specific category
         show_completed: Whether to include completed todos
         priority: Filter by priority level
+        user_id: User ID for user-specific storage
     
     Returns:
         Formatted list of todos
     """
-    todos_data = _load_todos()
-    todos = todos_data["todos"]
+    todos = _load_todos(user_id)
     
     if not todos:
         return "📝 No todos found."
@@ -114,28 +135,32 @@ def list_todos(category: str = None, show_completed: bool = False, priority: str
     
     return result
 
-def mark_todo_complete(todo_id: str) -> str:
+def mark_todo_complete(todo_id: str, user_id: str = None) -> str:
     """
     Mark a todo item as completed.
     
     Args:
         todo_id: ID of the todo to mark as complete
+        user_id: User ID for user-specific storage
     
     Returns:
         Confirmation message
     """
-    todos_data = _load_todos()
+    todos = _load_todos(user_id)
     
-    for todo in todos_data["todos"]:
+    for todo in todos:
         if todo["id"] == todo_id:
             todo["completed"] = True
             todo["completed_at"] = datetime.now().isoformat()
-            _save_todos(todos_data)
-            return f"✅ Todo '{todo['title']}' marked as completed!"
+            
+            if _save_todos(user_id, todos):
+                return f"✅ Todo '{todo['title']}' marked as completed!"
+            else:
+                return "❌ Failed to save todo completion"
     
     return f"❌ Todo with ID '{todo_id}' not found"
 
-def update_todo(todo_id: str, title: str = None, description: str = None, priority: str = None, category: str = None) -> str:
+def update_todo(todo_id: str, title: str = None, description: str = None, priority: str = None, category: str = None, user_id: str = None) -> str:
     """
     Update an existing todo's details.
     
@@ -145,13 +170,14 @@ def update_todo(todo_id: str, title: str = None, description: str = None, priori
         description: New description (optional)
         priority: New priority (optional)
         category: New category (optional)
+        user_id: User ID for user-specific storage
     
     Returns:
         Confirmation message
     """
-    todos_data = _load_todos()
+    todos = _load_todos(user_id)
     
-    for todo in todos_data["todos"]:
+    for todo in todos:
         if todo["id"] == todo_id:
             if title:
                 todo["title"] = title
@@ -164,71 +190,108 @@ def update_todo(todo_id: str, title: str = None, description: str = None, priori
             if category:
                 todo["category"] = category.lower()
             
-            _save_todos(todos_data)
-            return f"✅ Todo '{todo['title']}' updated successfully"
+            if _save_todos(user_id, todos):
+                return f"✅ Todo '{todo['title']}' updated successfully"
+            else:
+                return "❌ Failed to save todo update"
     
     return f"❌ Todo with ID '{todo_id}' not found"
 
-def delete_todo(todo_id: str) -> str:
+def delete_todo(todo_id: str, user_id: str = None) -> str:
     """
     Delete a todo item by ID.
     
     Args:
         todo_id: ID of the todo to delete
+        user_id: User ID for user-specific storage
     
     Returns:
         Confirmation message
     """
-    todos_data = _load_todos()
+    todos = _load_todos(user_id)
     
-    for i, todo in enumerate(todos_data["todos"]):
+    for i, todo in enumerate(todos):
         if todo["id"] == todo_id:
             deleted_title = todo["title"]
-            todos_data["todos"].pop(i)
-            _save_todos(todos_data)
-            return f"✅ Todo '{deleted_title}' deleted successfully"
+            todos.pop(i)
+            
+            if _save_todos(user_id, todos):
+                return f"✅ Todo '{deleted_title}' deleted successfully"
+            else:
+                return "❌ Failed to save todo deletion"
     
     return f"❌ Todo with ID '{todo_id}' not found"
 
-def prioritize_todos() -> str:
+def prioritize_todos(user_id: str = None) -> str:
     """
     Show todos organized by priority with recommendations.
+    
+    Args:
+        user_id: User ID for user-specific storage
     
     Returns:
         Prioritized list with recommendations
     """
-    todos_data = _load_todos()
-    todos = [t for t in todos_data["todos"] if not t.get("completed", False)]
+    todos = _load_todos(user_id)
     
     if not todos:
-        return "📝 No active todos found."
+        return "📝 No todos found to prioritize."
+    
+    # Filter out completed todos
+    active_todos = [t for t in todos if not t.get("completed", False)]
+    
+    if not active_todos:
+        return "🎉 All todos are completed! Great job!"
     
     # Group by priority
     priority_groups = {"urgent": [], "high": [], "medium": [], "low": []}
-    for todo in todos:
+    
+    for todo in active_todos:
         priority = todo.get("priority", "medium")
-        priority_groups[priority].append(todo)
+        if priority in priority_groups:
+            priority_groups[priority].append(todo)
     
-    result = "🎯 Priority Overview:\n\n"
+    result = "🎯 Priority Recommendations:\n\n"
     
-    for priority in ["urgent", "high", "medium", "low"]:
-        todos_in_priority = priority_groups[priority]
-        if todos_in_priority:
-            priority_emoji = {"urgent": "🚨", "high": "🔴", "medium": "🟡", "low": "🟢"}
-            result += f"{priority_emoji[priority]} {priority.upper()} Priority ({len(todos_in_priority)} items):\n"
-            for todo in todos_in_priority:
-                result += f"   • {todo['title']}\n"
-            result += "\n"
+    # Show urgent items first
+    if priority_groups["urgent"]:
+        result += "🚨 URGENT (Do these first!):\n"
+        for todo in priority_groups["urgent"]:
+            result += f"   • {todo['title']}\n"
+        result += "\n"
+    
+    # Show high priority items
+    if priority_groups["high"]:
+        result += "🔴 HIGH PRIORITY:\n"
+        for todo in priority_groups["high"]:
+            result += f"   • {todo['title']}\n"
+        result += "\n"
+    
+    # Show medium priority items
+    if priority_groups["medium"]:
+        result += "🟡 MEDIUM PRIORITY:\n"
+        for todo in priority_groups["medium"]:
+            result += f"   • {todo['title']}\n"
+        result += "\n"
+    
+    # Show low priority items
+    if priority_groups["low"]:
+        result += "🟢 LOW PRIORITY:\n"
+        for todo in priority_groups["low"]:
+            result += f"   • {todo['title']}\n"
+        result += "\n"
     
     # Add recommendations
+    total_active = len(active_todos)
     urgent_count = len(priority_groups["urgent"])
     high_count = len(priority_groups["high"])
     
+    result += "💡 Recommendations:\n"
     if urgent_count > 0:
-        result += "💡 Recommendation: Focus on urgent tasks first!\n"
-    elif high_count > 3:
-        result += "💡 Recommendation: Consider breaking down some high-priority tasks.\n"
-    else:
-        result += "💡 Recommendation: You're doing great! Keep up the good work.\n"
+        result += f"   • Focus on the {urgent_count} urgent items first\n"
+    if high_count > 0:
+        result += f"   • Then tackle the {high_count} high priority items\n"
+    if total_active > 5:
+        result += f"   • Consider breaking down larger tasks (you have {total_active} active todos)\n"
     
     return result 

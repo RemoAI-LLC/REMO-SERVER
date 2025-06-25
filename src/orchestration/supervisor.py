@@ -19,26 +19,34 @@ class SupervisorOrchestrator:
     Enhanced with memory integration for better context awareness.
     """
     
-    def __init__(self, model_name: str = "gpt-4o-mini"):
+    def __init__(self, model_name: str = "gpt-4o-mini", user_id: str = None):
         """
         Initialize the supervisor orchestrator with specialized agents.
         
         Args:
             model_name: The LLM model to use for the supervisor
+            user_id: User ID for user-specific functionality
         """
         self.model_name = model_name
+        self.user_id = user_id
         self.llm = ChatOpenAI(
             model=model_name,
             temperature=0.5,  # Balanced temperature for routing decisions
             tags=["remo", "supervisor-orchestrator"]
         )
         
-        # Initialize specialized agents
-        self.reminder_agent = ReminderAgent(model_name)
-        self.todo_agent = TodoAgent(model_name)
+        # Initialize specialized agents with user ID
+        self.reminder_agent = ReminderAgent(model_name, user_id)
+        self.todo_agent = TodoAgent(model_name, user_id)
         
         # Create the supervisor with all agents
         self.supervisor = self._create_supervisor()
+    
+    def set_user_id(self, user_id: str):
+        """Set the user ID and update agents"""
+        self.user_id = user_id
+        self.reminder_agent.set_user_id(user_id)
+        self.todo_agent.set_user_id(user_id)
     
     def _create_supervisor(self):
         """

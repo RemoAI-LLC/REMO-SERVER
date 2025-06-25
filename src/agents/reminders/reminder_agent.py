@@ -6,6 +6,7 @@ Uses LangGraph's create_react_agent for reasoning and tool execution.
 
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
+from langchain.tools import tool
 from .reminder_tools import (
     set_reminder, 
     list_reminders, 
@@ -20,14 +21,16 @@ class ReminderAgent:
     Handles creating, listing, updating, and managing reminders.
     """
     
-    def __init__(self, model_name: str = "gpt-4o-mini"):
+    def __init__(self, model_name: str = "gpt-4o-mini", user_id: str = None):
         """
         Initialize the Reminder Agent with tools and persona.
         
         Args:
             model_name: The LLM model to use for the agent
+            user_id: User ID for user-specific functionality
         """
         self.model_name = model_name
+        self.user_id = user_id
         self.llm = ChatOpenAI(
             model=model_name,
             temperature=0.3,  # Lower temperature for more consistent reminder management
@@ -67,10 +70,62 @@ When listing reminders:
 
 Remember: You're part of a larger AI assistant system, so be collaborative and refer users to other specialists when needed."""
 
+        # Create user-specific tool wrappers
+        self.tools = self._create_user_specific_tools()
+        
         # Create the agent with tools
         self.agent = create_react_agent(
             model=self.llm,
-            tools=[set_reminder, list_reminders, update_reminder, delete_reminder, mark_reminder_complete],
+            tools=self.tools,
+            prompt=self.persona,
+            name="reminder_agent"
+        )
+    
+    def _create_user_specific_tools(self):
+        """Create tool wrappers that automatically include the user_id"""
+        
+        @tool
+        def set_reminder_wrapper(title: str, datetime_str: str, description: str = "") -> str:
+            """Set a new reminder with title, datetime, and optional description."""
+            return set_reminder(title, datetime_str, description, self.user_id)
+        
+        @tool
+        def list_reminders_wrapper(show_completed: bool = False) -> str:
+            """List all reminders, optionally including completed ones."""
+            return list_reminders(show_completed, self.user_id)
+        
+        @tool
+        def update_reminder_wrapper(reminder_id: str, title: str = None, datetime_str: str = None, description: str = None) -> str:
+            """Update an existing reminder's details."""
+            return update_reminder(reminder_id, title, datetime_str, description, self.user_id)
+        
+        @tool
+        def delete_reminder_wrapper(reminder_id: str) -> str:
+            """Delete a reminder by ID."""
+            return delete_reminder(reminder_id, self.user_id)
+        
+        @tool
+        def mark_reminder_complete_wrapper(reminder_id: str) -> str:
+            """Mark a reminder as completed."""
+            return mark_reminder_complete(reminder_id, self.user_id)
+        
+        return [
+            set_reminder_wrapper,
+            list_reminders_wrapper,
+            update_reminder_wrapper,
+            delete_reminder_wrapper,
+            mark_reminder_complete_wrapper
+        ]
+    
+    def set_user_id(self, user_id: str):
+        """Set the user ID for user-specific functionality"""
+        self.user_id = user_id
+        # Recreate tools with new user_id
+        self.tools = self._create_user_specific_tools()
+        # Recreate agent with new tools
+        self.agent = create_react_agent(
+            model=self.llm,
+            tools=self.tools,
             prompt=self.persona,
             name="reminder_agent"
         )

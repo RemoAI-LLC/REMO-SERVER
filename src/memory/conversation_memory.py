@@ -10,6 +10,7 @@ from langchain.schema import BaseMessage, HumanMessage, AIMessage
 from datetime import datetime, timedelta
 import json
 import os
+from ..utils.dynamodb_service import DynamoDBService
 
 class ConversationMemoryManager:
     """
@@ -17,23 +18,32 @@ class ConversationMemoryManager:
     Uses LangChain memory components to maintain conversation context.
     """
     
-    def __init__(self, memory_type: str = "buffer", max_tokens: int = 2000):
+    def __init__(self, memory_type: str = "buffer", max_tokens: int = 2000, user_id: str = None):
         """
         Initialize the conversation memory manager.
         
         Args:
             memory_type: Type of memory to use ("buffer" or "summary")
             max_tokens: Maximum tokens for summary memory
+            user_id: Privy user ID for user-specific storage
         """
         self.memory_type = memory_type
         self.max_tokens = max_tokens
+        self.user_id = user_id
         self.conversation_id = None
         self.memory = None
         self.conversation_start_time = None
         self.last_activity = None
         
+        # Initialize DynamoDB service for user-specific storage
+        self.dynamodb_service = DynamoDBService()
+        
         # Initialize memory based on type
         self._initialize_memory()
+        
+        # Load existing memory if user_id is provided
+        if self.user_id:
+            self._load_user_memory()
     
     def _initialize_memory(self):
         """Initialize the appropriate memory component."""
@@ -50,6 +60,70 @@ class ConversationMemoryManager:
                 memory_key="chat_history",
                 input_key="input"
             )
+    
+    def _load_user_memory(self):
+        """Load user-specific memory from DynamoDB."""
+        if not self.user_id:
+            return
+        
+        try:
+            # Load conversation memory
+            memory_data = self.dynamodb_service.load_conversation_memory(self.user_id)
+            if memory_data:
+                self.conversation_id = memory_data.get('conversation_id')
+                self.conversation_start_time = datetime.fromisoformat(memory_data.get('conversation_start_time')) if memory_data.get('conversation_start_time') else None
+                self.last_activity = datetime.fromisoformat(memory_data.get('last_activity')) if memory_data.get('last_activity') else None
+                
+                # Restore messages if available
+                if memory_data.get('messages'):
+                    for msg_data in memory_data['messages']:
+                        if msg_data.get('role') == 'user':
+                            message = HumanMessage(content=msg_data.get('content', ''))
+                        else:
+                            message = AIMessage(content=msg_data.get('content', ''))
+                        
+                        if hasattr(self.memory, 'chat_memory'):
+                            self.memory.chat_memory.add_message(message)
+                
+                print(f"Loaded conversation memory for user {self.user_id}")
+        except Exception as e:
+            print(f"Error loading user memory: {e}")
+    
+    def _save_user_memory(self):
+        """Save user-specific memory to DynamoDB."""
+        if not self.user_id:
+            return
+        
+        try:
+            # Prepare memory data for storage
+            memory_data = {
+                'conversation_id': self.conversation_id,
+                'conversation_start_time': self.conversation_start_time.isoformat() if self.conversation_start_time else None,
+                'last_activity': self.last_activity.isoformat() if self.last_activity else None,
+                'memory_type': self.memory_type,
+                'messages': []
+            }
+            
+            # Add messages if available
+            if hasattr(self.memory, 'chat_memory') and self.memory.chat_memory.messages:
+                for msg in self.memory.chat_memory.messages:
+                    msg_data = {
+                        'role': 'user' if isinstance(msg, HumanMessage) else 'assistant',
+                        'content': msg.content,
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    memory_data['messages'].append(msg_data)
+            
+            # Save to DynamoDB
+            self.dynamodb_service.save_conversation_memory(self.user_id, memory_data)
+            
+        except Exception as e:
+            print(f"Error saving user memory: {e}")
+    
+    def set_user_id(self, user_id: str):
+        """Set the user ID and load existing memory."""
+        self.user_id = user_id
+        self._load_user_memory()
     
     def start_conversation(self, conversation_id: str = None) -> str:
         """
@@ -70,6 +144,10 @@ class ConversationMemoryManager:
         
         # Clear any existing memory
         self._initialize_memory()
+        
+        # Save to DynamoDB if user_id is set
+        if self.user_id:
+            self._save_user_memory()
         
         return self.conversation_id
     
@@ -104,6 +182,10 @@ class ConversationMemoryManager:
             self._add_to_buffer_memory(message)
         
         self.last_activity = datetime.now()
+        
+        # Save to DynamoDB if user_id is set
+        if self.user_id:
+            self._save_user_memory()
     
     def _add_to_buffer_memory(self, message: BaseMessage):
         """Add message to buffer memory."""
@@ -191,27 +273,29 @@ class ConversationMemoryManager:
             "last_activity": self.last_activity.isoformat() if self.last_activity else None,
             "recent_messages": [],
             "summary": self.get_conversation_summary(),
-            "message_count": 0
+            "message_count": 0,
+            "user_id": self.user_id
         }
         
         try:
             messages = self.get_recent_messages(10)
             context["message_count"] = len(messages)
             
+            # Convert messages to serializable format
             for msg in messages:
                 context["recent_messages"].append({
                     "role": "user" if isinstance(msg, HumanMessage) else "assistant",
                     "content": msg.content,
-                    "metadata": getattr(msg, 'additional_kwargs', {})
+                    "timestamp": datetime.now().isoformat()
                 })
         except Exception as e:
-            context["error"] = str(e)
+            print(f"Error getting context for agent: {e}")
         
         return context
     
     def is_conversation_active(self, timeout_minutes: int = 30) -> bool:
         """
-        Check if the conversation is still active based on timeout.
+        Check if the conversation is still active based on last activity.
         
         Args:
             timeout_minutes: Minutes of inactivity before considering conversation inactive
@@ -219,91 +303,51 @@ class ConversationMemoryManager:
         Returns:
             True if conversation is active, False otherwise
         """
-        if self.last_activity is None:
+        if not self.last_activity:
             return False
         
         timeout_delta = timedelta(minutes=timeout_minutes)
         return datetime.now() - self.last_activity < timeout_delta
     
     def clear_memory(self) -> None:
-        """Clear the conversation memory."""
+        """Clear all conversation memory."""
         self._initialize_memory()
         self.conversation_id = None
         self.conversation_start_time = None
         self.last_activity = None
+        
+        # Save cleared state to DynamoDB if user_id is set
+        if self.user_id:
+            self._save_user_memory()
     
     def save_conversation(self, filepath: str = None) -> str:
         """
-        Save the conversation to a file.
+        Save conversation to a file (legacy method, now uses DynamoDB).
         
         Args:
-            filepath: Optional filepath, generates one if not provided
+            filepath: Optional filepath (not used with DynamoDB)
             
         Returns:
-            The filepath where conversation was saved
+            Success message
         """
-        if filepath is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filepath = f"conversations/conversation_{timestamp}.json"
-        
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        conversation_data = {
-            "conversation_id": self.conversation_id,
-            "start_time": self.conversation_start_time.isoformat() if self.conversation_start_time else None,
-            "last_activity": self.last_activity.isoformat() if self.last_activity else None,
-            "memory_type": self.memory_type,
-            "messages": []
-        }
-        
-        try:
-            messages = self.get_recent_messages()
-            for msg in messages:
-                conversation_data["messages"].append({
-                    "role": "user" if isinstance(msg, HumanMessage) else "assistant",
-                    "content": msg.content,
-                    "metadata": getattr(msg, 'additional_kwargs', {})
-                })
-            
-            with open(filepath, 'w') as f:
-                json.dump(conversation_data, f, indent=2)
-            
-            return filepath
-        except Exception as e:
-            raise Exception(f"Failed to save conversation: {e}")
+        if self.user_id:
+            self._save_user_memory()
+            return f"Conversation saved to DynamoDB for user {self.user_id}"
+        else:
+            return "No user ID set, cannot save to DynamoDB"
     
     def load_conversation(self, filepath: str) -> bool:
         """
-        Load a conversation from a file.
+        Load conversation from a file (legacy method, now uses DynamoDB).
         
         Args:
-            filepath: Path to the conversation file
+            filepath: Filepath (not used with DynamoDB)
             
         Returns:
-            True if loaded successfully, False otherwise
+            True if successful, False otherwise
         """
-        try:
-            with open(filepath, 'r') as f:
-                conversation_data = json.load(f)
-            
-            self.conversation_id = conversation_data.get("conversation_id")
-            self.conversation_start_time = datetime.fromisoformat(conversation_data["start_time"]) if conversation_data.get("start_time") else None
-            self.last_activity = datetime.fromisoformat(conversation_data["last_activity"]) if conversation_data.get("last_activity") else None
-            self.memory_type = conversation_data.get("memory_type", "buffer")
-            
-            # Reinitialize memory
-            self._initialize_memory()
-            
-            # Load messages
-            for msg_data in conversation_data.get("messages", []):
-                self.add_message(
-                    role=msg_data["role"],
-                    content=msg_data["content"],
-                    metadata=msg_data.get("metadata", {})
-                )
-            
+        if self.user_id:
+            self._load_user_memory()
             return True
-        except Exception as e:
-            print(f"Failed to load conversation: {e}")
+        else:
             return False 
