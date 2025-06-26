@@ -117,7 +117,35 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
     
     # Priority order: Intent detection > Context routing > General response
     # If we have a clear intent, prioritize it over context routing
-    if is_todo_intent:
+    if is_todo_intent and todo_details.get("action") == "list_todos":
+        # Directly call the todo agent's list_todos method
+        try:
+            agent_response = supervisor_orchestrator.todo_agent.list_todos()
+            memory_manager.add_message("assistant", agent_response)
+            context_manager.add_agent_interaction(
+                agent_name="todo_agent",
+                action="list_todos",
+                result="success",
+                metadata={"user_message": user_message, "response": agent_response}
+            )
+            return agent_response
+        except Exception as e:
+            return f"I encountered an error while listing your todos: {str(e)}. Please try again."
+    elif is_reminder_intent and reminder_details.get("action") == "list_reminders":
+        # Directly call the reminder agent's list_reminders method
+        try:
+            agent_response = supervisor_orchestrator.reminder_agent.list_reminders()
+            memory_manager.add_message("assistant", agent_response)
+            context_manager.add_agent_interaction(
+                agent_name="reminder_agent",
+                action="list_reminders",
+                result="success",
+                metadata={"user_message": user_message, "response": agent_response}
+            )
+            return agent_response
+        except Exception as e:
+            return f"I encountered an error while listing your reminders: {str(e)}. Please try again."
+    elif is_todo_intent:
         should_route_to_specialized = True
         target_agent = "todo_agent"
         context_manager.set_conversation_topic("todo")

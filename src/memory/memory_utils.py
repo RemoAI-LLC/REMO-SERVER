@@ -172,6 +172,17 @@ class MemoryUtils:
         """
         message_lower = message.lower()
         
+        # Explicit patterns for listing reminders
+        list_patterns = [
+            r"show (me )?all (my )?(reminders|alerts|alarms|reminder list)",
+            r"list (all )?(my )?(reminders|alerts|alarms|reminder list)",
+            r"display (all )?(my )?(reminders|alerts|alarms|reminder list)",
+            r"what (are|is) (my )?(reminders|alerts|alarms|reminder list)",
+            r"see (all )?(my )?(reminders|alerts|alarms|reminder list)"
+        ]
+        if any(re.search(pattern, message_lower) for pattern in list_patterns):
+            return True, {"action": "list_reminders", "confidence": 1.0}
+        
         # First check if it's explicitly a todo request (to avoid false positives)
         todo_keywords = ["todo", "task", "item", "thing", "project", "work", "priority", "to do", "to-do", "to do's", "todos"]
         if any(keyword in message_lower for keyword in todo_keywords):
@@ -267,6 +278,17 @@ class MemoryUtils:
             Tuple of (is_todo_intent, intent_details)
         """
         message_lower = message.lower()
+        
+        # Explicit patterns for listing todos
+        list_patterns = [
+            r"show (me )?all (my )?(todos|to do's|tasks|todo list)",
+            r"list (all )?(my )?(todos|to do's|tasks|todo list)",
+            r"display (all )?(my )?(todos|to do's|tasks|todo list)",
+            r"what (are|is) (my )?(todos|to do's|tasks|todo list)",
+            r"see (all )?(my )?(todos|to do's|tasks|todo list)"
+        ]
+        if any(re.search(pattern, message_lower) for pattern in list_patterns):
+            return True, {"action": "list_todos", "confidence": 1.0}
         
         # Enhanced todo detection patterns - more comprehensive
         todo_patterns = [

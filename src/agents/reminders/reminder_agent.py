@@ -177,3 +177,7 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
                 
         except Exception as e:
             return f"I encountered an error while processing your reminder request: {str(e)}. Please try again." 
+
+    def list_reminders(self, show_completed: bool = False) -> str:
+        """Directly list reminders for the current user."""
+        return list_reminders(show_completed, self.user_id) 

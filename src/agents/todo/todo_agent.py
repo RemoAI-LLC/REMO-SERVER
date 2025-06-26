@@ -208,3 +208,7 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
                 
         except Exception as e:
             return f"I encountered an error while processing your todo request: {str(e)}. Please try again." 
+
+    def list_todos(self, show_completed: bool = False, category: str = None) -> str:
+        """Directly list todos for the current user."""
+        return list_todos(show_completed, category, self.user_id) 

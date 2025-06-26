@@ -4,6 +4,7 @@
 
 Now powered by multi-agent orchestration with specialized agents for reminders and todo management.
 Enhanced with conversation memory for seamless multi-turn interactions.
+**NEW**: User-specific data isolation with DynamoDB integration for secure, personalized experiences.
 
 ## 🚀 Quick Start
 
@@ -43,24 +44,36 @@ npm run dev:web
 - **Conversation Memory**: Remembers context across interactions
 - **Context Management**: Tracks conversation topics and user intent
 - **Memory Persistence**: Saves conversations for future reference
+- **User-Specific Data**: Isolated conversation history per user
 
 ### 🎯 Intelligent Routing
 
 - **Intent Detection**: Automatically detects reminder and todo requests
 - **Context-Aware Routing**: Routes based on conversation history
 - **Fallback Handling**: Graceful degradation if agents fail
+- **Direct Listing**: Fast, accurate listing of todos and reminders
+
+### 💾 Data Persistence & Security
+
+- **DynamoDB Integration**: Scalable, serverless database storage
+- **User Data Isolation**: Complete separation of user data using Privy user IDs
+- **Automatic Cleanup**: TTL-based data expiration for old conversations
+- **Secure Storage**: Encrypted data storage with proper access controls
 
 ### 🌐 API Integration
 
 - **FastAPI Backend**: RESTful API with automatic documentation
 - **CORS Support**: Ready for frontend integration
 - **Environment Variables**: Secure credential management
+- **User Authentication**: Privy integration for secure user management
 
 ## 📋 Prerequisites
 
 - Python 3.11+
 - OpenAI API Key
 - Node.js 18+ (for frontend)
+- AWS DynamoDB (for data persistence)
+- Privy (for user authentication)
 
 ## 🛠️ Installation
 
@@ -90,6 +103,14 @@ cd REMO-APP
 npm install
 ```
 
+### Database Setup
+
+```bash
+# Set up DynamoDB tables
+cd REMO-SERVER
+python scripts/setup_dynamodb.py
+```
+
 ## ⚙️ Configuration
 
 ### Environment Variables (.env)
@@ -97,6 +118,11 @@ npm install
 ```bash
 # Required
 OPENAI_API_KEY=your_openai_api_key_here
+
+# AWS DynamoDB (for data persistence)
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=us-east-1
 
 # Optional (for LangSmith tracing)
 LANGCHAIN_API_KEY=your_langsmith_api_key
@@ -152,6 +178,7 @@ Content-Type: application/json
 
 {
   "message": "Set a reminder for tomorrow 9am",
+  "user_id": "user_123",
   "conversation_history": [
     {"role": "user", "content": "Hello"},
     {"role": "assistant", "content": "Hi! How can I help you?"}
@@ -166,7 +193,7 @@ Content-Type: application/json
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "who are you?", "conversation_history": []}'
+  -d '{"message": "who are you?", "user_id": "user_123", "conversation_history": []}'
 ```
 
 #### Set Reminder
@@ -174,7 +201,7 @@ curl -X POST http://localhost:8000/chat \
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "set a reminder for painting tomorrow at 9am", "conversation_history": []}'
+  -d '{"message": "set a reminder for painting tomorrow at 9am", "user_id": "user_123", "conversation_history": []}'
 ```
 
 #### Add Todo
@@ -182,7 +209,23 @@ curl -X POST http://localhost:8000/chat \
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "add buy groceries to my todo list", "conversation_history": []}'
+  -d '{"message": "add buy groceries to my todo list", "user_id": "user_123", "conversation_history": []}'
+```
+
+#### List Todos
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "show me all my todos", "user_id": "user_123", "conversation_history": []}'
+```
+
+#### List Reminders
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "show me all my reminders", "user_id": "user_123", "conversation_history": []}'
 ```
 
 #### With Conversation History
@@ -192,6 +235,7 @@ curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "yes, add description: paint the living room",
+    "user_id": "user_123",
     "conversation_history": [
       {"role": "user", "content": "set a reminder for painting tomorrow at 9am"},
       {"role": "assistant", "content": "Could you please confirm if you would like to add a description?"}
@@ -216,6 +260,14 @@ Visit `http://localhost:8000/docs` for interactive API documentation (Swagger UI
                        │   Agents        │
                        │   • Reminder    │
                        │   • Todo        │
+                       └─────────────────┘
+                              │
+                              ▼
+                       ┌─────────────────┐
+                       │   DynamoDB      │
+                       │   • User Data   │
+                       │   • Memory      │
+                       │   • Context     │
                        └─────────────────┘
 ```
 
@@ -259,7 +311,7 @@ REMO-SERVER/
 │   │   └── todo/        # Todo management
 │   ├── memory/          # Conversation memory
 │   ├── orchestration/   # Multi-agent coordination
-│   └── utils/           # Utility functions
+│   └── utils/           # Utility functions & DynamoDB
 └── Developer guides/    # Detailed documentation
 
 REMO-APP/
@@ -270,6 +322,23 @@ REMO-APP/
 ├── package.json         # Node.js dependencies
 └── Developer guides/    # Frontend documentation
 ```
+
+## 🆕 Recent Improvements
+
+### User-Specific Functionality
+- **Data Isolation**: Each user's data is completely separated using Privy user IDs
+- **Personalized Experience**: Reminders, todos, and conversation history are user-specific
+- **Secure Storage**: All user data is stored securely in DynamoDB with proper access controls
+
+### Enhanced Listing Functionality
+- **Accurate Listing**: Todo and reminder listings now show only the requested items
+- **Direct Routing**: Fast, deterministic listing bypasses LLM confusion
+- **Improved Intent Detection**: Better recognition of listing requests
+
+### Database Integration
+- **DynamoDB Service**: Comprehensive CRUD operations for all data types
+- **Automatic Cleanup**: TTL-based expiration for old conversations
+- **Efficient Querying**: GSIs for fast user-specific data retrieval
 
 ## 🤝 Contributing
 

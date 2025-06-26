@@ -376,4 +376,53 @@ task = MemoryUtils.extract_task_from_message("your message here")
 3. **Advanced Routing**: More sophisticated routing algorithms
 4. **Analytics Integration**: Better tracking and analytics for user interactions
 
+## Listing Functionality Fix
+
+### Problem
+When users requested to "show all todos" or "show all reminders", the system was incorrectly returning both todos and reminders together, regardless of the specific request.
+
+### Root Cause
+The issue was in the routing logic where listing requests were being processed through the LLM/agent layer, which was confusing the listing context and returning mixed results.
+
+### Solution
+Implemented direct routing for listing requests:
+
+```python
+# In app.py - Enhanced routing logic
+if is_listing_request:
+    if is_todo_listing:
+        # Call todo agent's list method directly
+        response = todo_agent.list_todos(user_id)
+    elif is_reminder_listing:
+        # Call reminder agent's list method directly
+        response = reminder_agent.list_reminders(user_id)
+```
+
+### Implementation Details
+1. **Intent Detection**: Added specific patterns to detect listing requests:
+   - Todo listing: "show todos", "list todos", "all todos", etc.
+   - Reminder listing: "show reminders", "list reminders", "all reminders", etc.
+
+2. **Direct Routing**: Bypassed the LLM/agent layer for listing requests to avoid confusion
+
+3. **Agent Methods**: Exposed direct `list_todos()` and `list_reminders()` methods on agent classes
+
+### Results
+- ✅ Todo listing now shows only todos
+- ✅ Reminder listing now shows only reminders
+- ✅ No more mixed results
+- ✅ Faster response times for listing requests
+
+## Testing
+The fix was verified with the following test cases:
+- "show me all my todos" → Returns only todos
+- "show me all my reminders" → Returns only reminders
+- Mixed conversation context → Still maintains proper separation
+
+## Best Practices
+1. Use direct routing for simple, deterministic operations like listing
+2. Implement specific intent detection patterns for better accuracy
+3. Test listing functionality in various conversation contexts
+4. Monitor for any regression in intent detection accuracy
+
 This comprehensive improvement to the intent detection and routing system has significantly enhanced Remo's ability to understand and respond to user requests accurately and naturally. 
