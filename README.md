@@ -503,6 +503,356 @@ is_reminder_intent = MemoryUtils.detect_reminder_intent(message, conversation_co
 
 The conversation memory system makes Remo's agents much more intelligent and user-friendly by providing them with the context they need to have natural, continuous conversations with users. This creates a truly personalized AI assistant experience that remembers and builds upon previous interactions.
 
+## 🗄️ DynamoDB Table: `remo-users`
+
+The `remo-users` table is the foundation of Remo's user management system, storing user profile information and authentication details with complete data isolation.
+
+### 📊 **Table Structure**
+
+```python
+# remo-users Table Schema
+{
+    'privy_id': 'HASH',        # Partition Key (String) - Unique user identifier
+    'email': 'String',         # User's email address
+    'wallet': 'String',        # Wallet address (optional)
+    'first_name': 'String',    # User's first name
+    'last_name': 'String',     # User's last name
+    'phone_number': 'String',  # Phone number (optional)
+    'created_at': 'String',    # ISO datetime when user was created
+    'updated_at': 'String'     # ISO datetime when user was last updated
+}
+```
+
+### 🔧 **Table Creation Process**
+
+#### Step 1: Automatic Table Creation
+```python
+# In DynamoDBService.__init__()
+def _ensure_users_table(self):
+    table_name = 'remo-users'
+    
+    try:
+        # Check if table exists
+        self.users_table = self.dynamodb.Table(table_name)
+        self.users_table.load()
+        print(f"✅ Users table '{table_name}' exists")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            # Create table if it doesn't exist
+            print(f"📝 Creating users table '{table_name}'...")
+            self._create_users_table(table_name)
+```
+
+#### Step 2: Table Configuration
+```python
+def _create_users_table(self, table_name: str):
+    table = self.dynamodb.create_table(
+        TableName=table_name,
+        KeySchema=[
+            {
+                'AttributeName': 'privy_id',
+                'KeyType': 'HASH'  # Partition key
+            }
+        ],
+        AttributeDefinitions=[
+            {
+                'AttributeName': 'privy_id',
+                'AttributeType': 'S'  # String type
+            }
+        ],
+        BillingMode='PAY_PER_REQUEST'  # Cost-effective for variable workloads
+    )
+    
+    # Wait for table to be created
+    table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+    self.users_table = table
+    print(f"✅ Users table '{table_name}' created successfully")
+```
+
+### 📝 **Step-by-Step Usage Process**
+
+#### Step 1: User Registration
+```python
+# When a user signs up with Privy
+user_data = {
+    'privy_id': 'did:privy:1234567890abcdef',
+    'email': 'john.doe@example.com',
+    'wallet': '0x1234567890abcdef1234567890abcdef12345678',
+    'first_name': 'John',
+    'last_name': 'Doe',
+    'phone_number': '+1234567890'
+}
+
+# Save user details to DynamoDB
+success = db.save_user_details(user_data)
+if success:
+    print("✅ User registered successfully")
+else:
+    print("❌ Failed to register user")
+```
+
+#### Step 2: User Authentication
+```python
+# When user logs in, retrieve their details
+user_details = db.get_user_details('did:privy:1234567890abcdef')
+
+if user_details:
+    print(f"Welcome back, {user_details['first_name']}!")
+    # User is authenticated and can access their data
+else:
+    print("User not found - redirect to registration")
+```
+
+#### Step 3: User Data Retrieval
+```python
+# Get complete user profile
+user_profile = db.get_user_details(privy_id)
+
+# Access specific user information
+user_email = user_profile['email']
+user_name = f"{user_profile['first_name']} {user_profile['last_name']}"
+user_wallet = user_profile['wallet']
+```
+
+#### Step 4: User Data Updates
+```python
+# Update user information
+updated_user_data = {
+    'privy_id': 'did:privy:1234567890abcdef',
+    'email': 'john.doe@newemail.com',  # Updated email
+    'first_name': 'John',
+    'last_name': 'Smith',  # Updated last name
+    'phone_number': '+1987654321'  # Updated phone
+}
+
+success = db.save_user_details(updated_user_data)
+if success:
+    print("✅ User profile updated successfully")
+```
+
+### 🔍 **CRUD Operations**
+
+#### Create (Save User Details)
+```python
+def save_user_details(self, user_data: Dict) -> bool:
+    """Save user details to DynamoDB."""
+    try:
+        item = {
+            'privy_id': user_data['privy_id'],
+            'email': user_data.get('email', ''),
+            'wallet': user_data.get('wallet', ''),
+            'first_name': user_data.get('first_name', ''),
+            'last_name': user_data.get('last_name', ''),
+            'phone_number': user_data.get('phone_number', ''),
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        self.users_table.put_item(Item=item)
+        return True
+        
+    except Exception as e:
+        print(f"Error saving user details: {e}")
+        return False
+```
+
+#### Read (Get User Details)
+```python
+def get_user_details(self, privy_id: str) -> Optional[Dict]:
+    """Get user details by Privy ID."""
+    try:
+        response = self.users_table.get_item(
+            Key={'privy_id': privy_id}
+        )
+        
+        return response.get('Item')
+        
+    except Exception as e:
+        print(f"Error getting user details: {e}")
+        return None
+```
+
+#### Update (Modify User Data)
+```python
+# Update specific fields
+def update_user_field(self, privy_id: str, field: str, value: str) -> bool:
+    """Update a specific user field."""
+    try:
+        self.users_table.update_item(
+            Key={'privy_id': privy_id},
+            UpdateExpression=f'SET {field} = :value, updated_at = :updated_at',
+            ExpressionAttributeValues={
+                ':value': value,
+                ':updated_at': datetime.now().isoformat()
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating user field: {e}")
+        return False
+
+# Example usage
+db.update_user_field('user_123', 'email', 'newemail@example.com')
+db.update_user_field('user_123', 'phone_number', '+1987654321')
+```
+
+#### Delete (Remove User)
+```python
+def delete_user(self, privy_id: str) -> bool:
+    """Delete user from the system."""
+    try:
+        self.users_table.delete_item(
+            Key={'privy_id': privy_id}
+        )
+        return True
+    except Exception as e:
+        print(f"Error deleting user: {e}")
+        return False
+```
+
+### 🎯 **Where the remo-users Table is Used**
+
+#### 1. **User Authentication Flow**
+```python
+# In PrivyAuthGate.tsx (Frontend)
+const { user } = usePrivy()
+const privy_id = user?.id
+
+# Send to backend for authentication
+const response = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ privy_id, user_data })
+})
+```
+
+#### 2. **API Endpoints**
+```python
+# In app.py - User data endpoints
+@app.get("/user/{user_id}/profile")
+async def get_user_profile(user_id: str):
+    user_details = db.get_user_details(user_id)
+    if user_details:
+        return {"success": True, "user": user_details}
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
+
+@app.post("/user/profile")
+async def update_user_profile(user_data: dict):
+    success = db.save_user_details(user_data)
+    return {"success": success}
+```
+
+#### 3. **User-Specific Data Operations**
+```python
+# When creating user-specific managers
+def get_user_manager(user_id: str):
+    # Verify user exists before creating managers
+    user_details = db.get_user_details(user_id)
+    if not user_details:
+        raise ValueError(f"User {user_id} not found")
+    
+    # Create user-specific memory and context managers
+    memory_manager = ConversationMemoryManager(user_id=user_id)
+    context_manager = ConversationContextManager(user_id=user_id)
+    return {'memory_manager': memory_manager, 'context_manager': context_manager}
+```
+
+#### 4. **Data Isolation Verification**
+```python
+# Ensure user data is properly isolated
+def verify_user_access(user_id: str, requested_user_id: str) -> bool:
+    """Verify that a user can only access their own data."""
+    return user_id == requested_user_id
+
+# Usage in API endpoints
+@app.get("/user/{user_id}/todos")
+async def get_user_todos(user_id: str, current_user: str):
+    if not verify_user_access(current_user, user_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    todos = db.get_todos(user_id)
+    return {"todos": todos}
+```
+
+### 🔒 **Security Features**
+
+#### 1. **User Data Isolation**
+- Each user's data is completely separated by `privy_id`
+- No cross-user data access possible
+- Partition key ensures data distribution
+
+#### 2. **Authentication Integration**
+- Integrates with Privy for secure authentication
+- Stores only necessary user information
+- No sensitive data like passwords stored
+
+#### 3. **Data Validation**
+```python
+def validate_user_data(user_data: Dict) -> bool:
+    """Validate user data before saving."""
+    required_fields = ['privy_id', 'email']
+    
+    for field in required_fields:
+        if field not in user_data or not user_data[field]:
+            return False
+    
+    # Validate email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, user_data['email']):
+        return False
+    
+    return True
+```
+
+### 📊 **Performance Optimizations**
+
+#### 1. **Partition Key Design**
+- `privy_id` as partition key ensures even distribution
+- No hot partition issues
+- Efficient queries by user ID
+
+#### 2. **Pay-per-Request Billing**
+- Cost-effective for variable workloads
+- No capacity planning required
+- Scales automatically with usage
+
+#### 3. **Minimal Data Storage**
+- Only essential user information stored
+- No redundant data
+- Efficient storage usage
+
+### 🧪 **Testing the remo-users Table**
+
+#### Manual Testing
+```python
+# Test user creation
+user_data = {
+    'privy_id': 'test_user_123',
+    'email': 'test@example.com',
+    'first_name': 'Test',
+    'last_name': 'User'
+}
+
+# Save user
+success = db.save_user_details(user_data)
+print(f"User creation: {'✅ Success' if success else '❌ Failed'}")
+
+# Retrieve user
+user = db.get_user_details('test_user_123')
+print(f"User retrieval: {'✅ Success' if user else '❌ Failed'}")
+print(f"User data: {user}")
+```
+
+#### Automated Testing
+```bash
+# Run the setup script to test table functionality
+python scripts/setup_dynamodb.py
+```
+
+The `remo-users` table serves as the foundation for Remo's user management system, providing secure, isolated storage for user profiles while enabling seamless integration with Privy authentication and user-specific data operations throughout the application.
+
 ## 🔧 Development
 
 ### Running in Development
