@@ -45,6 +45,13 @@ npm run dev:web
 - **Context Management**: Tracks conversation topics and user intent
 - **Memory Persistence**: Saves conversations for future reference
 - **User-Specific Data**: Isolated conversation history per user
+- **Multi-Turn Support**: Handles incomplete requests and follow-up responses
+- **Intent Detection**: Automatically detects reminder and todo intents
+- **Time Recognition**: Recognizes time expressions like "6am", "2pm", "tomorrow"
+- **Memory Types**: Supports buffer (short-term) and summary (long-term) memory
+- **Adaptive Memory**: Can switch between memory types based on conversation length
+- **Conversation Continuity**: Maintains context across multiple interactions
+- **Clarification Detection**: Recognizes when users are correcting routing mistakes
 
 ### 🎯 Intelligent Routing
 
