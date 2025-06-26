@@ -855,530 +855,20 @@ The `remo-users` table serves as the foundation for Remo's user management syste
 
 ## 🗄️ DynamoDB Table: `remo-reminders`
 
-The `remo-reminders` table is the core storage system for Remo's reminder functionality, enabling users to set, track, and manage their reminders with complete data isolation and efficient querying.
-
-### 📊 **Table Structure**
-
-```python
-# remo-reminders Table Schema
-{
-    'user_id': 'HASH',         # Partition Key (String) - User identifier
-    'reminder_id': 'RANGE',    # Sort Key (String) - Unique reminder identifier
-    'title': 'String',         # Reminder title/name
-    'description': 'String',   # Optional reminder description
-    'reminding_time': 'String', # ISO datetime when reminder should trigger
-    'status': 'String',        # Status: 'pending', 'done', 'cancelled'
-    'created_at': 'String',    # ISO datetime when reminder was created
-    'updated_at': 'String',    # ISO datetime when reminder was last updated
-    'ttl': 'Number'            # Unix timestamp + 1 year for automatic cleanup
-}
-
-# Global Secondary Index: status-index
-{
-    'user_id': 'HASH',         # Partition key
-    'status': 'RANGE'          # Sort key for status-based queries
-}
-```
-
-### 🔧 **Table Creation Process**
-
-#### Step 1: Automatic Table Creation
-```python
-# In DynamoDBService.__init__()
-def _ensure_reminders_table(self):
-    table_name = 'remo-reminders'
-    
-    try:
-        # Check if table exists
-        self.reminders_table = self.dynamodb.Table(table_name)
-        self.reminders_table.load()
-        print(f"✅ Reminders table '{table_name}' exists")
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFoundException':
-            # Create table if it doesn't exist
-            print(f"📝 Creating reminders table '{table_name}'...")
-            self._create_reminders_table(table_name)
-```
-
-#### Step 2: Table Configuration with GSI
-```python
-def _create_reminders_table(self, table_name: str):
-    table = self.dynamodb.create_table(
-        TableName=table_name,
-        KeySchema=[
-            {
-                'AttributeName': 'user_id',
-                'KeyType': 'HASH'  # Partition key
-            },
-            {
-                'AttributeName': 'reminder_id',
-                'KeyType': 'RANGE'  # Sort key
-            }
-        ],
-        AttributeDefinitions=[
-            {
-                'AttributeName': 'user_id',
-                'AttributeType': 'S'
-            },
-            {
-                'AttributeName': 'reminder_id',
-                'AttributeType': 'S'
-            },
-            {
-                'AttributeName': 'status',
-                'AttributeType': 'S'
-            }
-        ],
-        BillingMode='PAY_PER_REQUEST',
-        GlobalSecondaryIndexes=[
-            {
-                'IndexName': 'status-index',
-                'KeySchema': [
-                    {
-                        'AttributeName': 'user_id',
-                        'KeyType': 'HASH'
-                    },
-                    {
-                        'AttributeName': 'status',
-                        'KeyType': 'RANGE'
-                    }
-                ],
-                'Projection': {
-                    'ProjectionType': 'ALL'
-                }
-            }
-        ]
-    )
-    
-    # Wait for table to be created
-    table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
-    self.reminders_table = table
-    print(f"✅ Reminders table '{table_name}' created successfully")
-```
-
-### 📝 **Step-by-Step Usage Process**
-
-#### Step 1: Setting a Reminder
-```python
-# When user sets a reminder through the agent
-reminder_data = {
-    'reminder_id': f"rem_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_id[-8:]}",
-    'title': 'Doctor Appointment',
-    'description': 'Annual checkup with Dr. Smith',
-    'reminding_time': '2025-06-26T14:00:00',
-    'status': 'pending',
-    'created_at': datetime.now().isoformat()
-}
-
-# Save reminder to DynamoDB
-success = db.save_reminder('user_123', reminder_data)
-if success:
-    print("✅ Reminder set successfully")
-else:
-    print("❌ Failed to set reminder")
-```
-
-#### Step 2: Listing User Reminders
-```python
-# Get all reminders for a user
-all_reminders = db.get_reminders('user_123')
-
-# Get only pending reminders
-pending_reminders = db.get_reminders('user_123', status='pending')
-
-# Get only completed reminders
-completed_reminders = db.get_reminders('user_123', status='done')
-
-print(f"Found {len(all_reminders)} total reminders")
-print(f"Found {len(pending_reminders)} pending reminders")
-print(f"Found {len(completed_reminders)} completed reminders")
-```
-
-#### Step 3: Updating Reminder Status
-```python
-# Mark reminder as completed
-success = db.update_reminder_status('user_123', 'rem_20250625_180000_user_123', 'done')
-
-# Mark reminder as cancelled
-success = db.update_reminder_status('user_123', 'rem_20250625_180000_user_123', 'cancelled')
-
-if success:
-    print("✅ Reminder status updated successfully")
-else:
-    print("❌ Failed to update reminder status")
-```
-
-#### Step 4: Managing Reminders
-```python
-# Update reminder details
-updated_reminder = {
-    'reminder_id': 'rem_20250625_180000_user_123',
-    'title': 'Updated Doctor Appointment',
-    'description': 'Rescheduled checkup',
-    'reminding_time': '2025-06-27T15:00:00',
-    'status': 'pending',
-    'created_at': '2025-06-25T18:00:00'
-}
-
-success = db.save_reminder('user_123', updated_reminder)
-
-# Delete a reminder
-success = db.delete_reminder('user_123', 'rem_20250625_180000_user_123')
-```
-
-### 🔍 **CRUD Operations**
-
-#### Create (Save Reminder)
-```python
-def save_reminder(self, user_id: str, reminder_data: Dict) -> bool:
-    """Save a reminder to DynamoDB."""
-    try:
-        item = {
-            'user_id': user_id,
-            'reminder_id': reminder_data['reminder_id'],
-            'title': reminder_data['title'],
-            'description': reminder_data.get('description', ''),
-            'reminding_time': reminder_data['reminding_time'],
-            'status': reminder_data.get('status', 'pending'),
-            'created_at': reminder_data['created_at'],
-            'updated_at': datetime.now().isoformat(),
-            'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
-        }
-        
-        self.reminders_table.put_item(Item=item)
-        return True
-        
-    except Exception as e:
-        print(f"Error saving reminder: {e}")
-        return False
-```
-
-#### Read (Get Reminders)
-```python
-def get_reminders(self, user_id: str, status: str = None) -> List[Dict]:
-    """Get reminders for a user, optionally filtered by status."""
-    try:
-        if status:
-            # Use GSI to filter by status
-            response = self.reminders_table.query(
-                IndexName='status-index',
-                KeyConditionExpression='user_id = :user_id AND #status = :status',
-                ExpressionAttributeNames={'#status': 'status'},
-                ExpressionAttributeValues={
-                    ':user_id': user_id,
-                    ':status': status
-                }
-            )
-        else:
-            # Get all reminders for user
-            response = self.reminders_table.query(
-                KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': user_id}
-            )
-        
-        return response.get('Items', [])
-        
-    except Exception as e:
-        print(f"Error getting reminders: {e}")
-        return []
-```
-
-#### Update (Update Reminder Status)
-```python
-def update_reminder_status(self, user_id: str, reminder_id: str, status: str) -> bool:
-    """Update reminder status."""
-    try:
-        self.reminders_table.update_item(
-            Key={
-                'user_id': user_id,
-                'reminder_id': reminder_id
-            },
-            UpdateExpression='SET #status = :status, updated_at = :updated_at',
-            ExpressionAttributeNames={'#status': 'status'},
-            ExpressionAttributeValues={
-                ':status': status,
-                ':updated_at': datetime.now().isoformat()
-            }
-        )
-        return True
-        
-    except Exception as e:
-        print(f"Error updating reminder status: {e}")
-        return False
-```
-
-#### Delete (Remove Reminder)
-```python
-def delete_reminder(self, user_id: str, reminder_id: str) -> bool:
-    """Delete a reminder."""
-    try:
-        self.reminders_table.delete_item(
-            Key={
-                'user_id': user_id,
-                'reminder_id': reminder_id
-            }
-        )
-        return True
-        
-    except Exception as e:
-        print(f"Error deleting reminder: {e}")
-        return False
-```
-
-### 🎯 **Where the remo-reminders Table is Used**
-
-#### 1. **Reminder Agent Operations**
-```python
-# In reminder_agent.py - Setting reminders
-def set_reminder(title: str, datetime_str: str, description: str = "", user_id: str = None):
-    reminder_data = {
-        "reminder_id": f"rem_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_id[-8:]}",
-        "title": title,
-        "description": description,
-        "reminding_time": reminder_time.isoformat(),
-        "status": "pending",
-        "created_at": datetime.now().isoformat()
-    }
-    
-    if dynamodb_service.save_reminder(user_id, reminder_data):
-        return f"✅ Reminder set: '{title}' for {reminder_time.strftime('%Y-%m-%d %H:%M')}"
-    else:
-        return "❌ Failed to save reminder to database"
-```
-
-#### 2. **Reminder Tools Integration**
-```python
-# In reminder_tools.py - Listing reminders
-def list_reminders(show_completed: bool = False, user_id: str = None):
-    if show_completed:
-        reminders = dynamodb_service.get_reminders(user_id)
-    else:
-        reminders = dynamodb_service.get_reminders(user_id, status="pending")
-    
-    # Format and return reminder list
-    result = "📋 Your Reminders:\n\n"
-    for reminder in reminders:
-        status = "✅" if reminder.get("status") == "done" else "⏰"
-        reminder_time = datetime.fromisoformat(reminder["reminding_time"])
-        result += f"{status} {reminder['title']}\n"
-        result += f"   📅 {reminder_time.strftime('%Y-%m-%d %H:%M')}\n"
-        if reminder.get("description"):
-            result += f"   📝 {reminder['description']}\n"
-        result += f"   🆔 {reminder['reminder_id']}\n\n"
-    
-    return result
-```
-
-#### 3. **API Endpoints**
-```python
-# In app.py - Reminder management endpoints
-@app.get("/user/{user_id}/reminders")
-async def get_user_reminders(user_id: str, status: str = None):
-    reminders = db.get_reminders(user_id, status=status)
-    return {"reminders": reminders, "count": len(reminders)}
-
-@app.post("/user/{user_id}/reminders")
-async def create_reminder(user_id: str, reminder_data: dict):
-    success = db.save_reminder(user_id, reminder_data)
-    return {"success": success}
-
-@app.put("/user/{user_id}/reminders/{reminder_id}/status")
-async def update_reminder_status(user_id: str, reminder_id: str, status: str):
-    success = db.update_reminder_status(user_id, reminder_id, status)
-    return {"success": success}
-```
-
-#### 4. **Chat Integration**
-```python
-# In app.py - Chat endpoint with reminder intent detection
-if is_reminder_intent:
-    should_route_to_specialized = True
-    target_agent = "reminder_agent"
-    context_manager.set_conversation_topic("reminder")
-    context_manager.set_user_intent("set_reminder")
-    
-    # Call reminder agent with user context
-    agent_response = supervisor_orchestrator.reminder_agent.process(
-        user_message, conversation_history_for_agent
-    )
-```
-
-### 🔒 **Security Features**
-
-#### 1. **User Data Isolation**
-- Each user's reminders are completely separated by `user_id`
-- No cross-user data access possible
-- Partition key ensures data distribution
-
-#### 2. **Status-Based Access Control**
-```python
-def verify_reminder_access(user_id: str, reminder_id: str) -> bool:
-    """Verify that a user can only access their own reminders."""
-    reminders = db.get_reminders(user_id)
-    return any(reminder['reminder_id'] == reminder_id for reminder in reminders)
-```
-
-#### 3. **Data Validation**
-```python
-def validate_reminder_data(reminder_data: Dict) -> bool:
-    """Validate reminder data before saving."""
-    required_fields = ['reminder_id', 'title', 'reminding_time']
-    
-    for field in required_fields:
-        if field not in reminder_data or not reminder_data[field]:
-            return False
-    
-    # Validate datetime format
-    try:
-        datetime.fromisoformat(reminder_data['reminding_time'])
-    except ValueError:
-        return False
-    
-    # Validate status
-    valid_statuses = ['pending', 'done', 'cancelled']
-    if reminder_data.get('status') not in valid_statuses:
-        return False
-    
-    return True
-```
-
-### 📊 **Performance Optimizations**
-
-#### 1. **Partition Key Design**
-- `user_id` as partition key ensures even distribution
-- Efficient queries for user-specific reminders
-- No hot partition issues
-
-#### 2. **Global Secondary Index (GSI)**
-- `status-index` enables efficient status-based filtering
-- Fast queries for pending, completed, or cancelled reminders
-- Maintains query performance as data grows
-
-#### 3. **TTL (Time To Live)**
-- Automatic cleanup after 1 year
-- Reduces storage costs
-- Maintains database performance
-
-#### 4. **Pay-per-Request Billing**
-- Cost-effective for variable workloads
-- Scales automatically with usage
-- No capacity planning required
-
-### 🧪 **Testing the remo-reminders Table**
-
-#### Manual Testing
-```python
-# Test reminder creation
-reminder_data = {
-    'reminder_id': 'test_rem_001',
-    'title': 'Test Reminder',
-    'description': 'This is a test reminder',
-    'reminding_time': '2025-06-26T10:00:00',
-    'status': 'pending',
-    'created_at': datetime.now().isoformat()
-}
-
-# Save reminder
-success = db.save_reminder('test_user_123', reminder_data)
-print(f"Reminder creation: {'✅ Success' if success else '❌ Failed'}")
-
-# Retrieve reminders
-reminders = db.get_reminders('test_user_123')
-print(f"Reminder retrieval: {'✅ Success' if reminders else '❌ Failed'}")
-print(f"Found {len(reminders)} reminders")
-
-# Update status
-success = db.update_reminder_status('test_user_123', 'test_rem_001', 'done')
-print(f"Status update: {'✅ Success' if success else '❌ Failed'}")
-
-# Test GSI query
-pending_reminders = db.get_reminders('test_user_123', status='pending')
-print(f"Pending reminders: {len(pending_reminders)}")
-```
-
-#### Automated Testing
-```bash
-# Run the setup script to test table functionality
-python scripts/setup_dynamodb.py
-
-# Run reminder-specific tests
-python test_reminder_detection.py
-```
-
-### 🔄 **Real-World Usage Examples**
-
-#### Example 1: Setting Multiple Reminders
-```python
-# User sets multiple reminders
-reminders_to_set = [
-    {
-        'title': 'Morning Meeting',
-        'reminding_time': '2025-06-26T09:00:00',
-        'description': 'Weekly team standup'
-    },
-    {
-        'title': 'Doctor Appointment',
-        'reminding_time': '2025-06-26T14:00:00',
-        'description': 'Annual checkup'
-    },
-    {
-        'title': 'Grocery Shopping',
-        'reminding_time': '2025-06-26T18:00:00',
-        'description': 'Buy milk and bread'
-    }
-]
-
-for reminder in reminders_to_set:
-    reminder_data = {
-        'reminder_id': f"rem_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_id[-8:]}",
-        'title': reminder['title'],
-        'description': reminder['description'],
-        'reminding_time': reminder['reminding_time'],
-        'status': 'pending',
-        'created_at': datetime.now().isoformat()
-    }
-    db.save_reminder('user_123', reminder_data)
-```
-
-#### Example 2: Reminder Management Workflow
-```python
-# 1. List all reminders
-all_reminders = db.get_reminders('user_123')
-print(f"Total reminders: {len(all_reminders)}")
-
-# 2. List pending reminders
-pending = db.get_reminders('user_123', status='pending')
-print(f"Pending reminders: {len(pending)}")
-
-# 3. Mark a reminder as done
-if pending:
-    reminder_to_complete = pending[0]
-    db.update_reminder_status('user_123', reminder_to_complete['reminder_id'], 'done')
-    print(f"Completed: {reminder_to_complete['title']}")
-
-# 4. List completed reminders
-completed = db.get_reminders('user_123', status='done')
-print(f"Completed reminders: {len(completed)}")
-```
-
-The `remo-reminders` table provides a robust, scalable foundation for Remo's reminder functionality, ensuring user data isolation, efficient querying, and automatic maintenance while supporting all CRUD operations needed for comprehensive reminder management.
-
-## 3. remo-todos Table
-
-The `remo-todos` table stores user-specific todo items with priority levels and status tracking.
+The `remo-reminders` table stores user-specific reminder items with time-based scheduling and status tracking.
 
 ### Table Structure
 
 ```json
 {
-  "TableName": "remo-todos",
+  "TableName": "remo-reminders",
   "KeySchema": [
     {
       "AttributeName": "user_id",
       "KeyType": "HASH"
     },
     {
-      "AttributeName": "todo_id", 
+      "AttributeName": "reminder_id", 
       "KeyType": "RANGE"
     }
   ],
@@ -1388,15 +878,11 @@ The `remo-todos` table stores user-specific todo items with priority levels and 
       "AttributeType": "S"
     },
     {
-      "AttributeName": "todo_id",
+      "AttributeName": "reminder_id",
       "AttributeType": "S"
     },
     {
       "AttributeName": "status",
-      "AttributeType": "S"
-    },
-    {
-      "AttributeName": "priority",
       "AttributeType": "S"
     }
   ],
@@ -1410,22 +896,6 @@ The `remo-todos` table stores user-specific todo items with priority levels and 
         },
         {
           "AttributeName": "status",
-          "KeyType": "RANGE"
-        }
-      ],
-      "Projection": {
-        "ProjectionType": "ALL"
-      }
-    },
-    {
-      "IndexName": "priority-index",
-      "KeySchema": [
-        {
-          "AttributeName": "user_id",
-          "KeyType": "HASH"
-        },
-        {
-          "AttributeName": "priority",
           "KeyType": "RANGE"
         }
       ],
@@ -1447,13 +917,13 @@ The `remo-todos` table stores user-specific todo items with priority levels and 
 ```json
 {
   "user_id": "did:privy:abc123...",
-  "todo_id": "todo_20241201_001",
-  "title": "Complete project documentation",
-  "description": "Write comprehensive API documentation for the new features",
-  "priority": "high",
+  "reminder_id": "rem_20241201_143022_a1b2c3d4",
+  "title": "Team meeting",
+  "description": "Weekly team sync meeting",
+  "reminding_time": "2024-12-02T10:00:00Z",
   "status": "pending",
-  "created_at": "2024-12-01T10:30:00Z",
-  "updated_at": "2024-12-01T15:45:00Z",
+  "created_at": "2024-12-01T14:30:22Z",
+  "updated_at": "2024-12-01T14:30:22Z",
   "ttl": 1735689600
 }
 ```
@@ -1463,18 +933,18 @@ The `remo-todos` table stores user-specific todo items with priority levels and 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
 | `user_id` | String | Privy user ID (partition key) | `"did:privy:abc123..."` |
-| `todo_id` | String | Unique todo identifier (sort key) | `"todo_20241201_001"` |
-| `title` | String | Todo title/name | `"Complete project documentation"` |
-| `description` | String | Detailed description | `"Write comprehensive API docs"` |
-| `priority` | String | Priority level | `"low"`, `"medium"`, `"high"`, `"urgent"` |
+| `reminder_id` | String | Unique reminder identifier (sort key) | `"rem_20241201_143022_a1b2c3d4"` |
+| `title` | String | Reminder title/name | `"Team meeting"` |
+| `description` | String | Detailed description | `"Weekly team sync meeting"` |
+| `reminding_time` | String | ISO datetime when reminder triggers | `"2024-12-02T10:00:00Z"` |
 | `status` | String | Current status | `"pending"`, `"done"`, `"cancelled"` |
-| `created_at` | String | ISO datetime of creation | `"2024-12-01T10:30:00Z"` |
+| `created_at` | String | ISO datetime of creation | `"2024-12-01T14:30:22Z"` |
 | `updated_at` | String | ISO datetime of last update | `"2024-12-01T15:45:00Z"` |
 | `ttl` | Number | Unix timestamp for expiration | `1735689600` (1 year) |
 
 ### CRUD Operations
 
-#### Create Todo
+#### Create Reminder
 
 ```python
 from src.utils.dynamodb_service import DynamoDBService
@@ -1483,139 +953,157 @@ import uuid
 
 db = DynamoDBService()
 
-# Create a new todo
-todo_data = {
-    'todo_id': f"todo_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
-    'title': 'Complete project documentation',
-    'description': 'Project documentation needs to be completed by Friday',
-    'priority': 'high',
+# Create a new reminder
+reminder_data = {
+    'reminder_id': f"rem_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
+    'title': 'Team meeting',
+    'description': 'Weekly team sync meeting',
+    'reminding_time': '2024-12-02T10:00:00Z',
     'status': 'pending',
     'created_at': datetime.now().isoformat()
 }
 
-success = db.save_todo(user_id="did:privy:abc123...", todo_data=todo_data)
-print(f"Todo created: {success}")
+success = db.save_reminder(user_id="did:privy:abc123...", reminder_data=reminder_data)
+print(f"Reminder created: {success}")
 ```
 
-#### Read Todos
+#### Read Reminders
 
 ```python
-# Get all todos for a user
-todos = db.get_todos(user_id="did:privy:abc123...")
+# Get all reminders for a user
+reminders = db.get_reminders(user_id="did:privy:abc123...")
 
-# Get todos by status
-pending_todos = db.get_todos(user_id="did:privy:abc123...", status="pending")
-done_todos = db.get_todos(user_id="did:privy:abc123...", status="done")
+# Get reminders by status
+pending_reminders = db.get_reminders(user_id="did:privy:abc123...", status="pending")
+completed_reminders = db.get_reminders(user_id="did:privy:abc123...", status="done")
 
-# Get todos by priority
-high_priority_todos = db.get_todos(user_id="did:privy:abc123...", priority="high")
-urgent_todos = db.get_todos(user_id="did:privy:abc123...", priority="urgent")
-
-# Get pending high priority todos
-pending_high_todos = db.get_todos(user_id="did:privy:abc123...", status="pending", priority="high")
+# Get upcoming reminders (filter by time)
+from datetime import datetime, timedelta
+now = datetime.now()
+upcoming = [r for r in reminders if datetime.fromisoformat(r['reminding_time']) > now]
 ```
 
-#### Update Todo
+#### Update Reminder
 
 ```python
-# Mark todo as done
-success = db.update_todo_status(
+# Mark reminder as done
+success = db.update_reminder_status(
     user_id="did:privy:abc123...",
-    todo_id="todo_20241201_001",
+    reminder_id="rem_20241201_143022_a1b2c3d4",
     status="done"
 )
 
-# Update priority
-success = db.update_todo_status(
-    user_id="did:privy:abc123...", 
-    todo_id="todo_20241201_001",
-    status="urgent"
-)
+# Update reminder time
+reminder_data = {
+    'reminder_id': 'rem_20241201_143022_a1b2c3d4',
+    'title': 'Team meeting',
+    'description': 'Weekly team sync meeting',
+    'reminding_time': '2024-12-03T11:00:00Z',  # Updated time
+    'status': 'pending',
+    'created_at': '2024-12-01T14:30:22Z'
+}
+success = db.save_reminder(user_id="did:privy:abc123...", reminder_data=reminder_data)
 ```
 
-#### Delete Todo
+#### Delete Reminder
 
 ```python
-# Delete a todo
-success = db.delete_todo(
+# Delete a reminder
+success = db.delete_reminder(
     user_id="did:privy:abc123...",
-    todo_id="todo_20241201_001"
+    reminder_id="rem_20241201_143022_a1b2c3d4"
 )
 ```
 
 ### Usage Examples
 
-#### 1. Creating a Todo with AI Assistant
+#### 1. Creating a Reminder with AI Assistant
 
 ```python
-# User says: "Add a todo to complete the project documentation by Friday"
+# User says: "Remind me to call mom tomorrow at 3pm"
 # AI processes and creates:
-todo_data = {
-    'todo_id': 'todo_20241201_143022_a1b2c3d4',
-    'title': 'Complete project documentation',
-    'description': 'Project documentation needs to be completed by Friday',
-    'priority': 'medium',
+reminder_data = {
+    'reminder_id': 'rem_20241201_143022_a1b2c3d4',
+    'title': 'Call mom',
+    'description': 'Call mom',
+    'reminding_time': '2024-12-02T15:00:00Z',  # Tomorrow 3pm
     'status': 'pending',
     'created_at': '2024-12-01T14:30:22Z'
 }
 
-db.save_todo(user_id="did:privy:abc123...", todo_data=todo_data)
+db.save_reminder(user_id="did:privy:abc123...", reminder_data=reminder_data)
 ```
 
-#### 2. Listing User's Todos
+#### 2. Natural Language Time Parsing
 
 ```python
-# Get all todos
-all_todos = db.get_todos(user_id="did:privy:abc123...")
+from src.agents.reminders.reminder_tools import _parse_datetime
+
+# Parse various time formats
+times = [
+    "tomorrow 3pm",
+    "next Monday 10am", 
+    "2024-12-15 14:30",
+    "in 2 hours",
+    "Friday at 5pm"
+]
+
+for time_str in times:
+    parsed = _parse_datetime(time_str)
+    print(f"{time_str} -> {parsed}")
+```
+
+#### 3. Listing User's Reminders
+
+```python
+# Get all reminders
+all_reminders = db.get_reminders(user_id="did:privy:abc123...")
 
 # Format for display
-for todo in all_todos:
-    print(f"📝 {todo['title']}")
-    print(f"   Priority: {todo['priority'].upper()}")
-    print(f"   Status: {todo['status']}")
-    print(f"   Created: {todo['created_at']}")
+for reminder in all_reminders:
+    status_icon = "✅" if reminder['status'] == "done" else "⏰"
+    reminder_time = datetime.fromisoformat(reminder['reminding_time'])
+    print(f"{status_icon} {reminder['title']}")
+    print(f"   📅 {reminder_time.strftime('%Y-%m-%d %H:%M')}")
+    if reminder.get('description'):
+        print(f"   📝 {reminder['description']}")
+    print(f"   🆔 {reminder['reminder_id']}")
     print("---")
 ```
 
-#### 3. Filtering by Priority and Status
+#### 4. Checking Due Reminders
 
 ```python
-# Get urgent pending todos
-urgent_pending = db.get_todos(
-    user_id="did:privy:abc123...", 
-    status="pending", 
-    priority="urgent"
-)
+from datetime import datetime, timedelta
 
-# Get all high priority todos
-high_priority = db.get_todos(
-    user_id="did:privy:abc123...", 
-    priority="high"
-)
+def get_due_reminders(user_id, within_hours=24):
+    """Get reminders due within specified hours."""
+    reminders = db.get_reminders(user_id, status="pending")
+    now = datetime.now()
+    due_time = now + timedelta(hours=within_hours)
+    
+    due_reminders = []
+    for reminder in reminders:
+        reminder_time = datetime.fromisoformat(reminder['reminding_time'])
+        if now <= reminder_time <= due_time:
+            due_reminders.append(reminder)
+    
+    return due_reminders
+
+# Get reminders due in next 24 hours
+due_soon = get_due_reminders("did:privy:abc123...", within_hours=24)
 ```
 
-#### 4. Marking Todos as Complete
+### Global Secondary Index
 
-```python
-# User says: "Mark the documentation todo as done"
-# AI finds and updates:
-success = db.update_todo_status(
-    user_id="did:privy:abc123...",
-    todo_id="todo_20241201_143022_a1b2c3d4",
-    status="done"
-)
-```
-
-### Global Secondary Indexes
-
-#### 1. Status Index (`status-index`)
+#### Status Index (`status-index`)
 - **Partition Key**: `user_id`
 - **Sort Key**: `status`
-- **Use Case**: Query todos by status (pending, done, cancelled)
+- **Use Case**: Query reminders by status (pending, done, cancelled)
 
 ```python
-# Query pending todos
-response = db.todos_table.query(
+# Query pending reminders
+response = db.reminders_table.query(
     IndexName='status-index',
     KeyConditionExpression='user_id = :user_id AND #status = :status',
     ExpressionAttributeNames={'#status': 'status'},
@@ -1626,52 +1114,39 @@ response = db.todos_table.query(
 )
 ```
 
-#### 2. Priority Index (`priority-index`)
-- **Partition Key**: `user_id`
-- **Sort Key**: `priority`
-- **Use Case**: Query todos by priority (low, medium, high, urgent)
-
-```python
-# Query high priority todos
-response = db.todos_table.query(
-    IndexName='priority-index',
-    KeyConditionExpression='user_id = :user_id AND #priority = :priority',
-    ExpressionAttributeNames={'#priority': 'priority'},
-    ExpressionAttributeValues={
-        ':user_id': 'did:privy:abc123...',
-        ':priority': 'high'
-    }
-)
-```
-
 ### Best Practices
 
-#### 1. Todo ID Generation
+#### 1. Reminder ID Generation
 ```python
 import uuid
 from datetime import datetime
 
-def generate_todo_id():
-    """Generate a unique todo ID with timestamp."""
+def generate_reminder_id(user_id):
+    """Generate a unique reminder ID with timestamp and user suffix."""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     unique_id = uuid.uuid4().hex[:8]
-    return f"todo_{timestamp}_{unique_id}"
+    user_suffix = user_id[-8:]  # Last 8 chars of user ID
+    return f"rem_{timestamp}_{user_suffix}"
 
-# Example: todo_20241201_143022_a1b2c3d4
+# Example: rem_20241201_143022_a1b2c3d4
 ```
 
-#### 2. Priority Levels
+#### 2. Time Validation
 ```python
-PRIORITY_LEVELS = {
-    'low': 1,
-    'medium': 2, 
-    'high': 3,
-    'urgent': 4
-}
+from datetime import datetime
 
-def get_priority_level(priority):
-    """Get numeric priority level for sorting."""
-    return PRIORITY_LEVELS.get(priority.lower(), 2)
+def validate_reminder_time(reminding_time):
+    """Validate reminder time is in the future."""
+    try:
+        reminder_dt = datetime.fromisoformat(reminding_time.replace('Z', '+00:00'))
+        now = datetime.now(reminder_dt.tzinfo)
+        return reminder_dt > now
+    except:
+        return False
+
+# Usage
+if not validate_reminder_time(reminder_data['reminding_time']):
+    return "❌ Reminder time must be in the future"
 ```
 
 #### 3. Status Management
@@ -1679,61 +1154,68 @@ def get_priority_level(priority):
 VALID_STATUSES = ['pending', 'done', 'cancelled']
 
 def is_valid_status(status):
-    """Validate todo status."""
+    """Validate reminder status."""
     return status.lower() in VALID_STATUSES
+
+def can_update_status(current_status, new_status):
+    """Check if status transition is valid."""
+    valid_transitions = {
+        'pending': ['done', 'cancelled'],
+        'done': ['pending'],  # Allow reactivation
+        'cancelled': ['pending']  # Allow reactivation
+    }
+    return new_status in valid_transitions.get(current_status, [])
 ```
 
 #### 4. Error Handling
 ```python
-def safe_todo_operation(operation_func, *args, **kwargs):
-    """Safely execute todo operations with error handling."""
+def safe_reminder_operation(operation_func, *args, **kwargs):
+    """Safely execute reminder operations with error handling."""
     try:
         result = operation_func(*args, **kwargs)
         return result
     except Exception as e:
-        print(f"Todo operation failed: {e}")
+        print(f"Reminder operation failed: {e}")
         return None
 
 # Usage
-success = safe_todo_operation(db.save_todo, user_id, todo_data)
+success = safe_reminder_operation(db.save_reminder, user_id, reminder_data)
 ```
 
 ### Performance Considerations
 
 #### 1. Query Optimization
-- Use GSIs for filtering by status or priority
+- Use status GSI for filtering by status
 - Avoid scanning the entire table
 - Use consistent read operations when needed
 
 #### 2. Batch Operations
 ```python
-def batch_update_todos(user_id, todo_updates):
-    """Batch update multiple todos."""
-    with db.todos_table.batch_writer() as batch:
-        for todo_id, updates in todo_updates.items():
+def batch_update_reminders(user_id, reminder_updates):
+    """Batch update multiple reminders."""
+    with db.reminders_table.batch_writer() as batch:
+        for reminder_id, updates in reminder_updates.items():
             batch.update_item(
-                Key={'user_id': user_id, 'todo_id': todo_id},
+                Key={'user_id': user_id, 'reminder_id': reminder_id},
                 UpdateExpression='SET ' + ', '.join([f'#{k} = :{k}' for k in updates.keys()]),
                 ExpressionAttributeNames={f'#{k}': k for k in updates.keys()},
                 ExpressionAttributeValues={f':{k}': v for k, v in updates.items()}
             )
 ```
 
-#### 3. Pagination
+#### 3. Time-based Queries
 ```python
-def get_todos_paginated(user_id, limit=10, last_key=None):
-    """Get todos with pagination."""
-    params = {
-        'KeyConditionExpression': 'user_id = :user_id',
-        'ExpressionAttributeValues': {':user_id': user_id},
-        'Limit': limit
-    }
+def get_reminders_by_time_range(user_id, start_time, end_time):
+    """Get reminders within a time range."""
+    reminders = db.get_reminders(user_id, status="pending")
     
-    if last_key:
-        params['ExclusiveStartKey'] = last_key
+    filtered_reminders = []
+    for reminder in reminders:
+        reminder_time = datetime.fromisoformat(reminder['reminding_time'])
+        if start_time <= reminder_time <= end_time:
+            filtered_reminders.append(reminder)
     
-    response = db.todos_table.query(**params)
-    return response.get('Items', []), response.get('LastEvaluatedKey')
+    return filtered_reminders
 ```
 
 ### Security Considerations
@@ -1745,20 +1227,24 @@ def get_todos_paginated(user_id, limit=10, last_key=None):
 
 #### 2. Input Validation
 ```python
-def validate_todo_data(todo_data):
-    """Validate todo data before saving."""
-    required_fields = ['todo_id', 'title', 'created_at']
+def validate_reminder_data(reminder_data):
+    """Validate reminder data before saving."""
+    required_fields = ['reminder_id', 'title', 'reminding_time', 'created_at']
     for field in required_fields:
-        if field not in todo_data:
+        if field not in reminder_data:
             raise ValueError(f"Missing required field: {field}")
     
-    if todo_data.get('priority') not in ['low', 'medium', 'high', 'urgent']:
-        todo_data['priority'] = 'medium'
+    # Validate time format
+    try:
+        datetime.fromisoformat(reminder_data['reminding_time'])
+    except:
+        raise ValueError("Invalid reminding_time format")
     
-    if todo_data.get('status') not in ['pending', 'done', 'cancelled']:
-        todo_data['status'] = 'pending'
+    # Validate status
+    if reminder_data.get('status') not in ['pending', 'done', 'cancelled']:
+        reminder_data['status'] = 'pending'
     
-    return todo_data
+    return reminder_data
 ```
 
 #### 3. TTL Management
@@ -1770,59 +1256,60 @@ def validate_todo_data(todo_data):
 
 #### 1. Unit Tests
 ```python
-def test_todo_crud_operations():
-    """Test todo CRUD operations."""
+def test_reminder_crud_operations():
+    """Test reminder CRUD operations."""
     db = DynamoDBService()
     user_id = "test_user_123"
     
     # Create
-    todo_data = {
-        'todo_id': 'test_todo_001',
-        'title': 'Test todo',
+    reminder_data = {
+        'reminder_id': 'test_rem_001',
+        'title': 'Test reminder',
         'description': 'Test description',
-        'priority': 'high',
+        'reminding_time': '2024-12-02T10:00:00Z',
         'status': 'pending',
         'created_at': datetime.now().isoformat()
     }
     
-    assert db.save_todo(user_id, todo_data) == True
+    assert db.save_reminder(user_id, reminder_data) == True
     
     # Read
-    todos = db.get_todos(user_id)
-    assert len(todos) == 1
-    assert todos[0]['title'] == 'Test todo'
+    reminders = db.get_reminders(user_id)
+    assert len(reminders) == 1
+    assert reminders[0]['title'] == 'Test reminder'
     
     # Update
-    assert db.update_todo_status(user_id, 'test_todo_001', 'done') == True
+    assert db.update_reminder_status(user_id, 'test_rem_001', 'done') == True
     
     # Delete
-    assert db.delete_todo(user_id, 'test_todo_001') == True
+    assert db.delete_reminder(user_id, 'test_rem_001') == True
 ```
 
 #### 2. Integration Tests
 ```python
-def test_todo_filtering():
-    """Test todo filtering by status and priority."""
+def test_reminder_filtering():
+    """Test reminder filtering by status."""
     db = DynamoDBService()
     user_id = "test_user_456"
     
-    # Create test todos
-    todos = [
-        {'todo_id': 'todo1', 'title': 'High Priority', 'priority': 'high', 'status': 'pending'},
-        {'todo_id': 'todo2', 'title': 'Low Priority', 'priority': 'low', 'status': 'done'},
-        {'todo_id': 'todo3', 'title': 'Urgent Todo', 'priority': 'urgent', 'status': 'pending'}
+    # Create test reminders
+    reminders = [
+        {'reminder_id': 'rem1', 'title': 'Pending Reminder', 'status': 'pending'},
+        {'reminder_id': 'rem2', 'title': 'Done Reminder', 'status': 'done'},
+        {'reminder_id': 'rem3', 'title': 'Another Pending', 'status': 'pending'}
     ]
     
-    for todo in todos:
-        todo['created_at'] = datetime.now().isoformat()
-        db.save_todo(user_id, todo)
+    for reminder in reminders:
+        reminder['reminding_time'] = '2024-12-02T10:00:00Z'
+        reminder['created_at'] = datetime.now().isoformat()
+        db.save_reminder(user_id, reminder)
     
     # Test filtering
-    pending_todos = db.get_todos(user_id, status='pending')
-    assert len(pending_todos) == 2
+    pending_reminders = db.get_reminders(user_id, status='pending')
+    assert len(pending_reminders) == 2
     
-    high_priority_todos = db.get_todos(user_id, priority='high')
-    assert len(high_priority_todos) == 1
+    done_reminders = db.get_reminders(user_id, status='done')
+    assert len(done_reminders) == 1
 ```
 
 ### Monitoring and Debugging
@@ -1838,19 +1325,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def save_todo_with_logging(user_id, todo_data):
-    """Save todo with detailed logging."""
-    logger.info(f"Saving todo for user {user_id}: {todo_data['title']}")
+def save_reminder_with_logging(user_id, reminder_data):
+    """Save reminder with detailed logging."""
+    logger.info(f"Saving reminder for user {user_id}: {reminder_data['title']}")
     
     try:
-        success = db.save_todo(user_id, todo_data)
+        success = db.save_reminder(user_id, reminder_data)
         if success:
-            logger.info(f"Todo saved successfully: {todo_data['todo_id']}")
+            logger.info(f"Reminder saved successfully: {reminder_data['reminder_id']}")
         else:
-            logger.error(f"Failed to save todo: {todo_data['todo_id']}")
+            logger.error(f"Failed to save reminder: {reminder_data['reminder_id']}")
         return success
     except Exception as e:
-        logger.error(f"Exception saving todo: {e}")
+        logger.error(f"Exception saving reminder: {e}")
         return False
 ```
 
@@ -1858,8 +1345,8 @@ def save_todo_with_logging(user_id, todo_data):
 ```python
 import time
 
-def timed_todo_operation(operation_func, *args, **kwargs):
-    """Time todo operations for performance monitoring."""
+def timed_reminder_operation(operation_func, *args, **kwargs):
+    """Time reminder operations for performance monitoring."""
     start_time = time.time()
     result = operation_func(*args, **kwargs)
     end_time = time.time()
@@ -1867,6 +1354,18 @@ def timed_todo_operation(operation_func, *args, **kwargs):
     print(f"Operation {operation_func.__name__} took {end_time - start_time:.3f} seconds")
     return result
 ```
+
+### Integration with AI Assistant
+
+The `remo-reminders` table integrates seamlessly with the Remo AI assistant through:
+
+1. **Natural Language Processing**: Users can say "remind me to call mom tomorrow at 3pm"
+2. **Automatic Time Parsing**: Converts natural language to ISO datetime
+3. **Status Tracking**: Tracks pending, done, and cancelled reminders
+4. **User Isolation**: Each user's reminders are completely isolated
+5. **Automatic Cleanup**: TTL ensures old reminders are automatically removed
+
+The `remo-reminders` table provides a robust, scalable foundation for Remo's reminder functionality, ensuring user data isolation, efficient querying, and automatic maintenance while supporting all CRUD operations needed for comprehensive reminder management.
 
 ## 🔧 Development
 
