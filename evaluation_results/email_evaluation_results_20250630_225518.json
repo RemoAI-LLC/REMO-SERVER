@@ -1,0 +1,135 @@
+{
+  "evaluation_timestamp": "2025-06-30T22:55:18.713019",
+  "summary": {
+    "total_tests": 5,
+    "passed_tests": 0,
+    "failed_tests": 5,
+    "intent_accuracy": 0.0,
+    "action_accuracy": 0.8,
+    "response_quality_avg": 0.32999999999999996,
+    "overall_accuracy": 0.346,
+    "category_breakdown": {
+      "composition": {
+        "total": 1,
+        "passed": 0,
+        "accuracy": 0.0,
+        "avg_score": 0.6699999999999999
+      },
+      "search": {
+        "total": 1,
+        "passed": 0,
+        "accuracy": 0.0,
+        "avg_score": 0.33999999999999997
+      },
+      "summary": {
+        "total": 2,
+        "passed": 0,
+        "accuracy": 0.0,
+        "avg_score": 0.36
+      },
+      "management": {
+        "total": 1,
+        "passed": 0,
+        "accuracy": 0.0,
+        "avg_score": 0.0
+      }
+    },
+    "difficulty_breakdown": {
+      "easy": {
+        "total": 5,
+        "passed": 0,
+        "accuracy": 0.0,
+        "avg_score": 0.346
+      }
+    },
+    "error_count": 0,
+    "evaluation_duration": 3.115635871887207
+  },
+  "results": [
+    {
+      "test_case_id": "compose_001",
+      "user_message": "compose an email to john@example.com",
+      "expected_intent": "email",
+      "actual_intent": true,
+      "expected_action": "compose_email",
+      "actual_action": "compose_email",
+      "agent_response": "\ud83d\udce7 I can help you compose an email! \n\nTo compose an email, please provide:\n- Recipients (To: field)\n- Subject line\n- Email body content\n\nYou can also include:\n- CC recipients\n- BCC recipients\n- Attachments\n\nExample: \"Compose an email to john@example.com with subject 'Meeting Tomorrow' and body 'Hi John, let's meet tomorrow at 2pm to discuss the project.'\"\n\nWhat would you like to include in your email?",
+      "intent_correct": false,
+      "action_correct": true,
+      "response_quality_score": 0.85,
+      "response_contains_expected": true,
+      "response_not_contains_unexpected": true,
+      "overall_score": 0.6699999999999999,
+      "evaluation_time": 0.3934299945831299,
+      "error_message": null
+    },
+    {
+      "test_case_id": "search_001",
+      "user_message": "search for emails from boss",
+      "expected_intent": "email",
+      "actual_intent": true,
+      "expected_action": "search_emails",
+      "actual_action": "search_emails",
+      "agent_response": "\ud83d\udce4 I can help you send emails!\n\nTo send an email, you can:\n1. Compose a new email and send it immediately\n2. Send a previously composed draft\n\nWould you like to:\n- Compose and send a new email?\n- Send an existing draft?\n- Schedule an email for later?\n\nJust let me know what you'd like to do!",
+      "intent_correct": false,
+      "action_correct": true,
+      "response_quality_score": 0.2,
+      "response_contains_expected": false,
+      "response_not_contains_unexpected": true,
+      "overall_score": 0.33999999999999997,
+      "evaluation_time": 0.5391750335693359,
+      "error_message": null
+    },
+    {
+      "test_case_id": "summary_001",
+      "user_message": "email summary",
+      "expected_intent": "email",
+      "actual_intent": true,
+      "expected_action": "email_summary",
+      "actual_action": "email_summary",
+      "agent_response": "\ud83d\udce4 I can help you send emails!\n\nTo send an email, you can:\n1. Compose a new email and send it immediately\n2. Send a previously composed draft\n\nWould you like to:\n- Compose and send a new email?\n- Send an existing draft?\n- Schedule an email for later?\n\nJust let me know what you'd like to do!",
+      "intent_correct": false,
+      "action_correct": true,
+      "response_quality_score": 0.3,
+      "response_contains_expected": false,
+      "response_not_contains_unexpected": true,
+      "overall_score": 0.36,
+      "evaluation_time": 1.1856420040130615,
+      "error_message": null
+    },
+    {
+      "test_case_id": "summary_002",
+      "user_message": "how many emails do I have",
+      "expected_intent": "email",
+      "actual_intent": true,
+      "expected_action": "email_summary",
+      "actual_action": "email_summary",
+      "agent_response": "\ud83d\udce4 I can help you send emails!\n\nTo send an email, you can:\n1. Compose a new email and send it immediately\n2. Send a previously composed draft\n\nWould you like to:\n- Compose and send a new email?\n- Send an existing draft?\n- Schedule an email for later?\n\nJust let me know what you'd like to do!",
+      "intent_correct": false,
+      "action_correct": true,
+      "response_quality_score": 0.3,
+      "response_contains_expected": false,
+      "response_not_contains_unexpected": true,
+      "overall_score": 0.36,
+      "evaluation_time": 0.4004988670349121,
+      "error_message": null
+    },
+    {
+      "test_case_id": "manage_001",
+      "user_message": "mark email as read",
+      "expected_intent": "email",
+      "actual_intent": true,
+      "expected_action": "manage_email",
+      "actual_action": "general_email",
+      "agent_response": "\ud83d\udce4 I can help you send emails!\n\nTo send an email, you can:\n1. Compose a new email and send it immediately\n2. Send a previously composed draft\n\nWould you like to:\n- Compose and send a new email?\n- Send an existing draft?\n- Schedule an email for later?\n\nJust let me know what you'd like to do!",
+      "intent_correct": false,
+      "action_correct": false,
+      "response_quality_score": 0.0,
+      "response_contains_expected": false,
+      "response_not_contains_unexpected": true,
+      "overall_score": 0.0,
+      "evaluation_time": 0.5968899726867676,
+      "error_message": null
+    }
+  ]
+}

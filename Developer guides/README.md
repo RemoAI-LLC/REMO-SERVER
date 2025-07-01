@@ -44,6 +44,10 @@ A complete step-by-step guide for adding new specialized agents to the Remo mult
 
 **NEW**: Comprehensive guide to the email assistant implementation following the LangChain agents-from-scratch pattern, including email composition, triage, and management.
 
+### [Email Evaluation Guide](./email_evaluation_guide.md)
+
+**NEW**: Comprehensive evaluation system for the email assistant agent, including LLM-as-a-judge evaluation, test datasets, and performance analysis.
+
 ### [Voice Chat Guide](./voice_chat_guide.md)
 
 Guide for implementing voice chat functionality and handling voice input/output.
@@ -75,6 +79,7 @@ How to use the graph visualization tool, LangSmith tracing, and best practices f
 ## 🚀 Example Use Cases
 
 - **Email Agent**: Send, read, and organize emails ✅ **IMPLEMENTED**
+- **Email Evaluation**: Comprehensive evaluation system with LLM-as-a-judge ✅ **IMPLEMENTED**
 - **Reminder Agent**: Set reminders and manage alerts ✅ **IMPLEMENTED**
 - **Todo Agent**: Manage tasks and project organization ✅ **IMPLEMENTED**
 - **Calendar Agent**: Schedule meetings and manage events
