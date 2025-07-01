@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from ..agents.reminders.reminder_agent import ReminderAgent
 from ..agents.todo.todo_agent import TodoAgent
+from ..agents.email.email_agent import EmailAgent
 
 class SupervisorOrchestrator:
     """
@@ -38,6 +39,7 @@ class SupervisorOrchestrator:
         # Initialize specialized agents with user ID
         self.reminder_agent = ReminderAgent(model_name, user_id)
         self.todo_agent = TodoAgent(model_name, user_id)
+        self.email_agent = EmailAgent(user_id)
         
         # Create the supervisor with all agents
         self.supervisor = self._create_supervisor()
@@ -47,6 +49,7 @@ class SupervisorOrchestrator:
         self.user_id = user_id
         self.reminder_agent.set_user_id(user_id)
         self.todo_agent.set_user_id(user_id)
+        self.email_agent = EmailAgent(user_id)  # Recreate with new user_id
     
     def _create_supervisor(self):
         """
@@ -61,6 +64,7 @@ class SupervisorOrchestrator:
 Your team includes:
 1. **Reminder Agent**: Manages reminders, alerts, and scheduled tasks
 2. **Todo Agent**: Handles todo lists, task organization, and project management
+3. **Email Agent**: Manages email composition, sending, searching, and organization
 
 Your responsibilities:
 - **Route Requests**: Direct user requests to the most appropriate specialist
@@ -73,6 +77,7 @@ Your responsibilities:
 When routing requests:
 - **Reminder-related**: "set reminder", "remind me", "alert", "schedule", "appointment", time expressions like "6am", "2pm"
 - **Todo-related**: "add todo", "task", "project", "organize", "prioritize", "complete task"
+- **Email-related**: "compose email", "send email", "search emails", "email summary", "archive email", "reply to email"
 - **Mixed requests**: Handle both reminder and todo tasks in sequence
 - **General queries**: Provide helpful guidance and route appropriately
 - **Context responses**: If user provides time/task info after a previous request, route to the appropriate agent
@@ -94,7 +99,8 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
         supervisor = create_supervisor(
             agents=[
                 self.reminder_agent.get_agent(),
-                self.todo_agent.get_agent()
+                self.todo_agent.get_agent(),
+                self.email_agent.get_agent()
             ],
             model=self.llm,
             prompt=supervisor_prompt
@@ -175,7 +181,8 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
         """
         return {
             "reminder_agent": self.reminder_agent.get_description(),
-            "todo_agent": self.todo_agent.get_description()
+            "todo_agent": self.todo_agent.get_description(),
+            "email_agent": self.email_agent.get_description()
         }
     
     def get_supervisor(self):
@@ -196,5 +203,7 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
             return self.reminder_agent
         elif agent_name == "todo_agent":
             return self.todo_agent
+        elif agent_name == "email_agent":
+            return self.email_agent
         else:
             return None 

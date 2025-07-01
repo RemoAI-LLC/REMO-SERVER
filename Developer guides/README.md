@@ -40,6 +40,10 @@ A complete step-by-step guide for adding new specialized agents to the Remo mult
 
 **NEW**: Summary of all user-specific functionality improvements including data isolation, DynamoDB integration, and listing fixes.
 
+### [Email Assistant Guide](./email_assistant_guide.md)
+
+**NEW**: Comprehensive guide to the email assistant implementation following the LangChain agents-from-scratch pattern, including email composition, triage, and management.
+
 ### [Voice Chat Guide](./voice_chat_guide.md)
 
 Guide for implementing voice chat functionality and handling voice input/output.
@@ -70,7 +74,9 @@ How to use the graph visualization tool, LangSmith tracing, and best practices f
 
 ## 🚀 Example Use Cases
 
-- **Email Agent**: Send, read, and organize emails
+- **Email Agent**: Send, read, and organize emails ✅ **IMPLEMENTED**
+- **Reminder Agent**: Set reminders and manage alerts ✅ **IMPLEMENTED**
+- **Todo Agent**: Manage tasks and project organization ✅ **IMPLEMENTED**
 - **Calendar Agent**: Schedule meetings and manage events
 - **Research Agent**: Search and summarize information
 - **Shopping Agent**: Create lists and find products
@@ -109,6 +115,7 @@ The enhanced intent detection and routing system provides:
 |-------------|----------|----------|---------|
 | **Todo** | "todo", "task", "to do", "to do's" | `add.*to.*to do` | "add groceries to my to do's" |
 | **Reminder** | "remind", "reminder", "alarm" | `remind me to.*at` | "remind me to call mom at 6pm" |
+| **Email** | "email", "mail", "compose", "send" | `compose.*email\|send.*email` | "compose an email to john@example.com" |
 | **Listing** | "show", "list", "all", "display" | `show.*todos\|list.*todos` | "show me all my todos" |
 | **Clarification** | "i asked", "i want", "add to do" | `i asked.*to do` | "i asked you to add the to do" |
 
@@ -120,6 +127,7 @@ from src.memory.memory_utils import MemoryUtils
 # Test intent detection
 is_todo, todo_details = MemoryUtils.detect_todo_intent("add groceries to my to do's")
 is_reminder, reminder_details = MemoryUtils.detect_reminder_intent("remind me to call mom")
+is_email, email_details = MemoryUtils.detect_email_intent("compose an email to john@example.com")
 is_listing, listing_type = MemoryUtils.detect_listing_request("show me all my todos")
 
 # Extract tasks

@@ -96,9 +96,10 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
     # Analyze the message for intent
     is_reminder_intent, reminder_details = MemoryUtils.detect_reminder_intent(user_message)
     is_todo_intent, todo_details = MemoryUtils.detect_todo_intent(user_message)
+    is_email_intent, email_details = MemoryUtils.detect_email_intent(user_message)
     
     # Check for context-aware routing
-    available_agents = ["reminder_agent", "todo_agent"]
+    available_agents = ["reminder_agent", "todo_agent", "email_agent"]
     context_agent = context_manager.should_route_to_agent(user_message, available_agents)
     
     # Determine if we should route to specialized agents
@@ -111,7 +112,9 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
         "set", "create", "add reminder", "set reminder", "set alarm", "set appointment",
         "todo", "task", "project", "organize", "prioritize", "complete", "add to", "add todo",
         "to do", "to-do", "checklist", "list", "add task", "create task", "mark complete",
-        "finish", "done", "complete task", "todo list", "task list"
+        "finish", "done", "complete task", "todo list", "task list",
+        "email", "mail", "compose", "send", "draft", "inbox", "outbox", "reply", "forward",
+        "archive", "search emails", "email summary", "schedule email", "mark read"
     ]
     has_explicit_specialized_keywords = any(keyword in user_message.lower() for keyword in specialized_keywords)
     
@@ -175,6 +178,21 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
                 required_info=["time"],
                 context={"description": reminder_details.get("description", "")}
             )
+    elif is_email_intent:
+        should_route_to_specialized = True
+        target_agent = "email_agent"
+        context_manager.set_conversation_topic("email")
+        context_manager.set_user_intent("email_management")
+        context_manager.set_active_agent("email_agent")  # Set active agent for context continuity
+        context_keywords = MemoryUtils.get_context_keywords_for_intent("email", email_details)
+        context_manager.add_context_keywords(context_keywords)
+        if not email_details.get("has_recipients") and email_details.get("action") == "compose":
+            context_manager.add_pending_request(
+                request_type="compose_email",
+                agent_name="email_agent",
+                required_info=["recipients", "subject", "body"],
+                context={"action": email_details.get("action")}
+            )
     elif context_agent:
         # Only use context routing if no clear intent is detected
         should_route_to_specialized = True
@@ -197,6 +215,8 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
                 agent_response = supervisor_orchestrator.reminder_agent.process(user_message, conversation_history_for_agent)
             elif target_agent == "todo_agent":
                 agent_response = supervisor_orchestrator.todo_agent.process(user_message, conversation_history_for_agent)
+            elif target_agent == "email_agent":
+                agent_response = supervisor_orchestrator.email_agent.process(user_message, conversation_history_for_agent)
             else:
                 # Fallback to supervisor for other agents
                 agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)

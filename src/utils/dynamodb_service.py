@@ -78,6 +78,9 @@ class DynamoDBService:
             # Check and create conversation table
             self._ensure_conversation_table()
             
+            # Check and create emails table
+            self._ensure_emails_table()
+            
             print("✅ All DynamoDB tables are ready")
             
         except Exception as e:
@@ -326,6 +329,108 @@ class DynamoDBService:
         table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
         self.conversation_table = table
         print(f"✅ Conversations table '{table_name}' created successfully")
+        
+        # Enable TTL on the table
+        try:
+            self.dynamodb.meta.client.update_time_to_live(
+                TableName=table_name,
+                TimeToLiveSpecification={
+                    'Enabled': True,
+                    'AttributeName': 'ttl'
+                }
+            )
+            print(f"✅ TTL enabled for '{table_name}' on attribute 'ttl'")
+        except Exception as e:
+            print(f"⚠️  Could not enable TTL for '{table_name}': {e}")
+    
+    def _ensure_emails_table(self):
+        """Ensure emails table exists."""
+        table_name = 'remo-emails'
+        
+        try:
+            self.emails_table = self.dynamodb.Table(table_name)
+            self.emails_table.load()
+            print(f"✅ Emails table '{table_name}' exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating emails table '{table_name}'...")
+                self._create_emails_table(table_name)
+            else:
+                raise e
+    
+    def _create_emails_table(self, table_name: str):
+        """Create emails table with proper structure."""
+        table = self.dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'user_id',
+                    'KeyType': 'HASH'  # Partition key
+                },
+                {
+                    'AttributeName': 'email_id',
+                    'KeyType': 'RANGE'  # Sort key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'user_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'email_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'status',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'priority',
+                    'AttributeType': 'S'
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST',
+            GlobalSecondaryIndexes=[
+                {
+                    'IndexName': 'status-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'user_id',
+                            'KeyType': 'HASH'
+                        },
+                        {
+                            'AttributeName': 'status',
+                            'KeyType': 'RANGE'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'ALL'
+                    }
+                },
+                {
+                    'IndexName': 'priority-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'user_id',
+                            'KeyType': 'HASH'
+                        },
+                        {
+                            'AttributeName': 'priority',
+                            'KeyType': 'RANGE'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'ALL'
+                    }
+                }
+            ]
+        )
+        
+        # Wait for table to be created
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        self.emails_table = table
+        print(f"✅ Emails table '{table_name}' created successfully")
         
         # Enable TTL on the table
         try:
@@ -940,6 +1045,11 @@ class DynamoDBService:
                 for todo in todos:
                     self.delete_todo(user_id, todo['todo_id'])
             
+            if data_type == 'emails' or data_type is None:
+                emails = self.get_emails(user_id)
+                for email in emails:
+                    self.delete_email(user_id, email['email_id'])
+            
             if data_type == 'conversations' or data_type is None:
                 # For conversations, we'll let TTL handle cleanup
                 pass
@@ -948,4 +1058,225 @@ class DynamoDBService:
             
         except Exception as e:
             print(f"Error deleting user data: {e}")
+            return False
+    
+    # ===== EMAIL METHODS =====
+    
+    def save_email_draft(self, user_id: str, email_data: Dict) -> bool:
+        """
+        Save an email draft to DynamoDB.
+        
+        Args:
+            user_id: Privy user ID
+            email_data: Email data with structure:
+                - email_id: Unique identifier
+                - to_recipients: List of recipients
+                - subject: Email subject
+                - body: Email body
+                - cc_recipients: List of CC recipients (optional)
+                - bcc_recipients: List of BCC recipients (optional)
+                - attachments: List of attachments (optional)
+                - status: 'draft', 'sent', 'scheduled'
+                - created_at: ISO datetime string
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.emails_table:
+            return False
+        
+        try:
+            item = {
+                'user_id': user_id,
+                'email_id': email_data['email_id'],
+                'to_recipients': email_data['to_recipients'],
+                'subject': email_data['subject'],
+                'body': email_data['body'],
+                'cc_recipients': email_data.get('cc_recipients', []),
+                'bcc_recipients': email_data.get('bcc_recipients', []),
+                'attachments': email_data.get('attachments', []),
+                'status': email_data.get('status', 'draft'),
+                'priority': email_data.get('priority', 'medium'),
+                'created_at': email_data['created_at'],
+                'updated_at': datetime.now().isoformat(),
+                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
+            }
+            
+            self.emails_table.put_item(Item=item)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving email draft: {e}")
+            return False
+    
+    def get_email_draft(self, user_id: str, email_id: str) -> Optional[Dict]:
+        """
+        Get an email draft by ID.
+        
+        Args:
+            user_id: Privy user ID
+            email_id: Email ID
+        
+        Returns:
+            Email data dictionary or None
+        """
+        if not self.emails_table:
+            return None
+        
+        try:
+            response = self.emails_table.get_item(
+                Key={
+                    'user_id': user_id,
+                    'email_id': email_id
+                }
+            )
+            
+            return response.get('Item')
+            
+        except Exception as e:
+            print(f"Error getting email draft: {e}")
+            return None
+    
+    def get_emails(self, user_id: str, status: str = None, priority: str = None) -> List[Dict]:
+        """
+        Get emails for a user, optionally filtered by status and priority.
+        
+        Args:
+            user_id: Privy user ID
+            status: Optional status filter ('draft', 'sent', 'scheduled')
+            priority: Optional priority filter ('low', 'medium', 'high', 'urgent')
+        
+        Returns:
+            List of email dictionaries
+        """
+        if not self.emails_table:
+            return []
+        
+        try:
+            if status:
+                # Use status GSI
+                response = self.emails_table.query(
+                    IndexName='status-index',
+                    KeyConditionExpression='user_id = :user_id AND #status = :status',
+                    ExpressionAttributeNames={'#status': 'status'},
+                    ExpressionAttributeValues={
+                        ':user_id': user_id,
+                        ':status': status
+                    }
+                )
+            elif priority:
+                # Use priority GSI
+                response = self.emails_table.query(
+                    IndexName='priority-index',
+                    KeyConditionExpression='user_id = :user_id AND #priority = :priority',
+                    ExpressionAttributeNames={'#priority': 'priority'},
+                    ExpressionAttributeValues={
+                        ':user_id': user_id,
+                        ':priority': priority
+                    }
+                )
+            else:
+                # Get all emails for user
+                response = self.emails_table.query(
+                    KeyConditionExpression='user_id = :user_id',
+                    ExpressionAttributeValues={':user_id': user_id}
+                )
+            
+            return response.get('Items', [])
+            
+        except Exception as e:
+            print(f"Error getting emails: {e}")
+            return []
+    
+    def update_email_status(self, user_id: str, email_id: str, status: str) -> bool:
+        """
+        Update email status.
+        
+        Args:
+            user_id: Privy user ID
+            email_id: Email ID
+            status: New status ('draft', 'sent', 'scheduled')
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.emails_table:
+            return False
+        
+        try:
+            self.emails_table.update_item(
+                Key={
+                    'user_id': user_id,
+                    'email_id': email_id
+                },
+                UpdateExpression='SET #status = :status, updated_at = :updated_at',
+                ExpressionAttributeNames={'#status': 'status'},
+                ExpressionAttributeValues={
+                    ':status': status,
+                    ':updated_at': datetime.now().isoformat()
+                }
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error updating email status: {e}")
+            return False
+    
+    def delete_email(self, user_id: str, email_id: str) -> bool:
+        """
+        Delete an email.
+        
+        Args:
+            user_id: Privy user ID
+            email_id: Email ID
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.emails_table:
+            return False
+        
+        try:
+            self.emails_table.delete_item(
+                Key={
+                    'user_id': user_id,
+                    'email_id': email_id
+                }
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting email: {e}")
+            return False
+    
+    def save_scheduled_email(self, user_id: str, scheduled_data: Dict) -> bool:
+        """
+        Save a scheduled email.
+        
+        Args:
+            user_id: Privy user ID
+            scheduled_data: Scheduled email data
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.emails_table:
+            return False
+        
+        try:
+            item = {
+                'user_id': user_id,
+                'email_id': scheduled_data['email_id'],
+                'scheduled_time': scheduled_data['scheduled_time'],
+                'status': 'scheduled',
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat(),
+                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
+            }
+            
+            self.emails_table.put_item(Item=item)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving scheduled email: {e}")
             return False 

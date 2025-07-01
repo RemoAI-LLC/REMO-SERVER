@@ -43,6 +43,16 @@ class MemoryUtils:
         "category": ["work", "personal", "shopping", "health", "family", "home"]
     }
     
+    # Email-related keywords
+    EMAIL_KEYWORDS = {
+        "compose": ["compose", "write", "draft", "create", "new email", "send email"],
+        "send": ["send", "mail", "email", "submit", "dispatch"],
+        "search": ["search", "find", "look for", "show", "display", "list"],
+        "manage": ["read", "mark read", "archive", "forward", "reply", "delete"],
+        "schedule": ["schedule", "later", "tomorrow", "next week", "set time"],
+        "summary": ["summary", "overview", "how many", "count", "status"]
+    }
+    
     @classmethod
     def extract_time_from_message(cls, message: str) -> Optional[str]:
         """
@@ -354,6 +364,84 @@ class MemoryUtils:
         return False, {}
     
     @classmethod
+    def detect_email_intent(cls, message: str) -> Tuple[bool, Dict]:
+        """
+        Detect if a message has email-related intent.
+        
+        Args:
+            message: The user message
+            
+        Returns:
+            Tuple of (is_email_intent, intent_details)
+        """
+        message_lower = message.lower()
+        
+        # Explicit patterns for listing emails
+        list_patterns = [
+            r"show (me )?all (my )?(emails|mail|inbox)",
+            r"list (all )?(my )?(emails|mail|inbox)",
+            r"display (all )?(my )?(emails|mail|inbox)",
+            r"what (are|is) (my )?(emails|mail|inbox)",
+            r"see (all )?(my )?(emails|mail|inbox)"
+        ]
+        if any(re.search(pattern, message_lower) for pattern in list_patterns):
+            return True, {"action": "list_emails", "confidence": 1.0}
+        
+        # Email summary patterns
+        summary_patterns = [
+            r"email summary",
+            r"how many emails",
+            r"email overview",
+            r"email status",
+            r"email count"
+        ]
+        if any(re.search(pattern, message_lower) for pattern in summary_patterns):
+            return True, {"action": "email_summary", "confidence": 1.0}
+        
+        # Email search patterns
+        search_patterns = [
+            r"search (for )?(emails|mail)",
+            r"find (emails|mail)",
+            r"look for (emails|mail)"
+        ]
+        if any(re.search(pattern, message_lower) for pattern in search_patterns):
+            return True, {"action": "search_emails", "confidence": 0.9}
+        
+        # Email composition patterns
+        compose_patterns = [
+            r'\b(compose|write|draft|create)\s+(?:an?\s+)?(?:email|mail)\b',
+            r'\b(send|email|mail)\s+(?:an?\s+)?(?:email|mail)\b',
+            r'\b(?:can you|could you|please)\s+(?:compose|write|draft|create|send)\s+(?:an?\s+)?(?:email|mail)\b',
+            r'\b(?:i need|i want|i\'d like)\s+(?:to\s+)?(?:compose|write|draft|create|send)\s+(?:an?\s+)?(?:email|mail)\b'
+        ]
+        if any(re.search(pattern, message_lower) for pattern in compose_patterns):
+            return True, {"action": "compose_email", "confidence": 0.9}
+        
+        # Email scheduling patterns
+        schedule_patterns = [
+            r'\b(schedule|set)\s+(?:an?\s+)?(?:email|mail)\b',
+            r'\b(?:email|mail)\s+(?:for|at|on)\s+(?:tomorrow|later|next week)\b'
+        ]
+        if any(re.search(pattern, message_lower) for pattern in schedule_patterns):
+            return True, {"action": "schedule_email", "confidence": 0.8}
+        
+        # Email management patterns
+        manage_patterns = [
+            r'\b(mark|mark as)\s+(?:read|unread)\b',
+            r'\b(archive|forward|reply|delete)\s+(?:email|mail)\b',
+            r'\b(?:email|mail)\s+(?:archive|forward|reply|delete)\b'
+        ]
+        if any(re.search(pattern, message_lower) for pattern in manage_patterns):
+            return True, {"action": "manage_email", "confidence": 0.8}
+        
+        # General email keywords
+        email_keywords = ["email", "mail", "inbox", "outbox", "compose", "send", "draft"]
+        if any(keyword in message_lower for keyword in email_keywords):
+            return True, {"action": "general_email", "confidence": 0.6}
+        
+        return False, {}
+    
+    @classmethod
     def extract_priority_from_message(cls, message: str) -> Optional[str]:
         """
         Extract priority information from a message.
@@ -438,6 +526,15 @@ class MemoryUtils:
                 keywords.extend(["work", "personal", "shopping", "health"])
             keywords.extend(["todo", "task", "project"])
         
+        elif intent_type == "email":
+            if details.get("action") == "compose_email":
+                keywords.extend(["compose", "write", "draft", "send"])
+            if details.get("action") == "search_emails":
+                keywords.extend(["search", "find", "look"])
+            if details.get("action") == "manage_email":
+                keywords.extend(["read", "archive", "forward", "reply"])
+            keywords.extend(["email", "mail", "inbox", "outbox"])
+        
         return keywords
     
     @classmethod
@@ -469,6 +566,7 @@ class MemoryUtils:
                 # Detect intents
                 is_reminder, reminder_details = cls.detect_reminder_intent(content)
                 is_todo, todo_details = cls.detect_todo_intent(content)
+                is_email, email_details = cls.detect_email_intent(content)
                 
                 if is_reminder:
                     analysis["intents_detected"].append({
@@ -486,6 +584,15 @@ class MemoryUtils:
                         "position": i
                     })
                     analysis["flow_type"] = "todo_setup"
+                    analysis["confidence"] = 0.8
+                
+                elif is_email:
+                    analysis["intents_detected"].append({
+                        "type": "email",
+                        "details": email_details,
+                        "position": i
+                    })
+                    analysis["flow_type"] = "email_setup"
                     analysis["confidence"] = 0.8
         
         # Count context changes
