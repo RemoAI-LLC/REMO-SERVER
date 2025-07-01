@@ -236,36 +236,6 @@ Provide your analysis in JSON format:
         self.feedback_items.append(feedback_item)
         return feedback_item
     
-    def collect_batch_feedback(self, 
-                             feedback_data: List[Dict[str, Any]]) -> List[FeedbackItem]:
-        """
-        Collect feedback for multiple responses at once.
-        
-        Args:
-            feedback_data: List of feedback data dictionaries
-            
-        Returns:
-            List of FeedbackItem objects
-        """
-        feedback_items = []
-        
-        for data in feedback_data:
-            feedback_type = FeedbackType(data.get("feedback_type", "general"))
-            rating = FeedbackRating(data.get("rating", 3))
-            
-            feedback_item = self.collect_explicit_feedback(
-                feedback_type=feedback_type,
-                rating=rating,
-                user_message=data["user_message"],
-                agent_response=data["agent_response"],
-                comments=data.get("comments"),
-                context=data.get("context")
-            )
-            
-            feedback_items.append(feedback_item)
-        
-        return feedback_items
-    
     def get_feedback_summary(self) -> Dict[str, Any]:
         """
         Get a summary of collected feedback.
@@ -335,29 +305,6 @@ Provide your analysis in JSON format:
                 "feedback_items": [asdict(item) for item in self.feedback_items]
             }, indent=2, default=str)
         
-        elif format == "csv":
-            import csv
-            import io
-            
-            output = io.StringIO()
-            writer = csv.writer(output)
-            
-            # Write header
-            writer.writerow([
-                "id", "user_id", "session_id", "timestamp", "feedback_type",
-                "rating", "user_message", "agent_response", "comments"
-            ])
-            
-            # Write data
-            for item in self.feedback_items:
-                writer.writerow([
-                    item.id, item.user_id, item.session_id, item.timestamp,
-                    item.feedback_type.value, item.rating.value,
-                    item.user_message, item.agent_response, item.comments or ""
-                ])
-            
-            return output.getvalue()
-        
         else:
             raise ValueError(f"Unsupported format: {format}")
     
@@ -378,18 +325,6 @@ Provide your analysis in JSON format:
         """
         return [item for item in self.feedback_items if item.feedback_type == feedback_type]
     
-    def get_feedback_by_rating(self, min_rating: FeedbackRating) -> List[FeedbackItem]:
-        """
-        Get feedback items with rating >= min_rating.
-        
-        Args:
-            min_rating: Minimum rating threshold
-            
-        Returns:
-            List of feedback items
-        """
-        return [item for item in self.feedback_items if item.rating.value >= min_rating.value]
-    
     def get_low_rated_feedback(self, max_rating: FeedbackRating = FeedbackRating.FAIR) -> List[FeedbackItem]:
         """
         Get feedback items with low ratings (for improvement focus).
@@ -400,4 +335,4 @@ Provide your analysis in JSON format:
         Returns:
             List of low-rated feedback items
         """
-        return [item for item in self.feedback_items if item.rating.value <= max_rating.value] 
+        return [item for item in self.feedback_items if item.rating.value <= max_rating.value]

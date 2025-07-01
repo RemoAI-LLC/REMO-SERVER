@@ -22,6 +22,10 @@ from langchain.schema import AIMessage
 from src.orchestration import SupervisorOrchestrator
 from src.memory import ConversationMemoryManager, ConversationContextManager, MemoryUtils
 from src.utils.dynamodb_service import DynamoDBService
+from src.feedback import (
+    FeedbackCollector, FeedbackAnalyzer, AgentImprover, FeedbackDatabase,
+    FeedbackType, FeedbackRating
+)
 
 load_dotenv()
 
@@ -291,6 +295,40 @@ class UserDataResponse(BaseModel):
     total_items: int
     last_updated: Optional[str] = None
 
+class FeedbackRequest(BaseModel):
+    user_message: str
+    agent_response: str
+    rating: int
+    feedback_type: str
+    comments: Optional[str] = None
+    expected_intent: Optional[str] = None
+    actual_intent: Optional[str] = None
+    expected_action: Optional[str] = None
+    actual_action: Optional[str] = None
+
+class FeedbackResponse(BaseModel):
+    feedback_id: str
+    success: bool
+    timestamp: str
+    message: str
+
+class FeedbackSummaryResponse(BaseModel):
+    user_id: str
+    total_feedback: int
+    average_rating: float
+    feedback_types: dict
+    rating_distribution: dict
+    insights: List[str]
+    recommendations: List[str]
+
+class ImprovementActionResponse(BaseModel):
+    action_id: str
+    action_type: str
+    description: str
+    priority: str
+    status: str
+    created_at: str
+
 @app.get("/")
 async def root():
     return {"message": "Remo AI Assistant API is running!"}
@@ -387,6 +425,207 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "dynamodb_available": dynamodb_service.table is not None
     }
+
+# Feedback System Endpoints
+
+@app.post("/feedback/submit")
+async def submit_feedback(request: FeedbackRequest, user_id: str = "default_user"):
+    """Submit feedback for an agent response."""
+    try:
+        # Initialize feedback collector
+        collector = FeedbackCollector(user_id=user_id)
+        
+        # Convert rating to enum
+        rating_enum = FeedbackRating(request.rating)
+        feedback_type_enum = FeedbackType(request.feedback_type)
+        
+        # Collect explicit feedback
+        feedback_item = collector.collect_explicit_feedback(
+            feedback_type=feedback_type_enum,
+            rating=rating_enum,
+            user_message=request.user_message,
+            agent_response=request.agent_response,
+            comments=request.comments
+        )
+        
+        # Save to database
+        db = FeedbackDatabase()
+        db.save_feedback_item(feedback_item)
+        
+        return FeedbackResponse(
+            feedback_id=feedback_item.id,
+            success=True,
+            timestamp=feedback_item.timestamp.isoformat(),
+            message="Feedback submitted successfully"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error submitting feedback: {str(e)}")
+
+@app.get("/feedback/summary/{user_id}")
+async def get_feedback_summary(user_id: str):
+    """Get feedback summary for a user."""
+    try:
+        # Get feedback from database
+        db = FeedbackDatabase()
+        feedback_items = db.get_user_feedback(user_id, limit=1000)
+        
+        if not feedback_items:
+            return FeedbackSummaryResponse(
+                user_id=user_id,
+                total_feedback=0,
+                average_rating=0.0,
+                feedback_types={},
+                rating_distribution={},
+                insights=[],
+                recommendations=[]
+            )
+        
+        # Analyze feedback
+        analyzer = FeedbackAnalyzer()
+        analysis = analyzer.analyze_feedback_patterns(feedback_items)
+        
+        return FeedbackSummaryResponse(
+            user_id=user_id,
+            total_feedback=analysis['total_items'],
+            average_rating=analysis['average_rating'],
+            feedback_types=analysis['feedback_types'],
+            rating_distribution=analysis['rating_distribution'],
+            insights=analysis['insights'],
+            recommendations=analysis['recommendations']
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting feedback summary: {str(e)}")
+
+@app.post("/feedback/improve/{user_id}")
+async def generate_improvements(user_id: str):
+    """Generate improvement actions based on user feedback."""
+    try:
+        # Get user feedback
+        db = FeedbackDatabase()
+        feedback_items = db.get_user_feedback(user_id, limit=1000)
+        
+        if not feedback_items:
+            raise HTTPException(status_code=404, detail="No feedback found for user")
+        
+        # Generate improvements
+        improver = AgentImprover(user_id=user_id)
+        actions = improver.generate_improvement_actions(feedback_items)
+        
+        # Save actions to database
+        for action in actions:
+            db.save_improvement_action(action)
+        
+        # Convert to response format
+        action_responses = []
+        for action in actions:
+            action_responses.append(ImprovementActionResponse(
+                action_id=action.id,
+                action_type=action.action_type,
+                description=action.description,
+                priority=action.priority,
+                status=action.status,
+                created_at=action.created_at.isoformat()
+            ))
+        
+        return {
+            "user_id": user_id,
+            "total_actions": len(actions),
+            "actions": action_responses
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating improvements: {str(e)}")
+
+@app.post("/feedback/implement/{action_id}")
+async def implement_improvement(action_id: str, user_id: str = "default_user"):
+    """Implement a specific improvement action."""
+    try:
+        # Get the action from database
+        db = FeedbackDatabase()
+        actions = db.get_improvement_actions(user_id=user_id)
+        
+        target_action = None
+        for action in actions:
+            if action.id == action_id:
+                target_action = action
+                break
+        
+        if not target_action:
+            raise HTTPException(status_code=404, detail="Improvement action not found")
+        
+        # Implement the improvement
+        improver = AgentImprover(user_id=user_id)
+        success = improver.implement_improvement(target_action)
+        
+        # Update action status in database
+        target_action.status = "completed" if success else "failed"
+        db.save_improvement_action(target_action)
+        
+        return {
+            "action_id": action_id,
+            "success": success,
+            "status": target_action.status,
+            "message": "Improvement implemented successfully" if success else "Improvement implementation failed"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error implementing improvement: {str(e)}")
+
+@app.get("/feedback/actions/{user_id}")
+async def get_improvement_actions(user_id: str, status: Optional[str] = None):
+    """Get improvement actions for a user."""
+    try:
+        db = FeedbackDatabase()
+        actions = db.get_improvement_actions(user_id=user_id, status=status)
+        
+        action_responses = []
+        for action in actions:
+            action_responses.append(ImprovementActionResponse(
+                action_id=action.id,
+                action_type=action.action_type,
+                description=action.description,
+                priority=action.priority,
+                status=action.status,
+                created_at=action.created_at.isoformat()
+            ))
+        
+        return {
+            "user_id": user_id,
+            "total_actions": len(actions),
+            "actions": action_responses
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting improvement actions: {str(e)}")
+
+@app.get("/feedback/export/{user_id}")
+async def export_feedback(user_id: str, format: str = "json"):
+    """Export user feedback data."""
+    try:
+        # Get user feedback
+        db = FeedbackDatabase()
+        feedback_items = db.get_user_feedback(user_id, limit=10000)
+        
+        if not feedback_items:
+            raise HTTPException(status_code=404, detail="No feedback found for user")
+        
+        # Export using collector
+        collector = FeedbackCollector(user_id=user_id)
+        collector.feedback_items = feedback_items
+        
+        export_data = collector.export_feedback(format=format)
+        
+        return {
+            "user_id": user_id,
+            "format": format,
+            "data": export_data,
+            "total_items": len(feedback_items)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error exporting feedback: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

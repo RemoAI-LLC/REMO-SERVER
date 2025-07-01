@@ -1,21 +1,30 @@
 """
-Human-in-the-Loop Feedback System
+Feedback Module
 
-This module provides human-in-the-loop capabilities for improving the email assistant agent
-based on human feedback and evaluation results.
+This module provides human-in-the-loop feedback capabilities for the Remo AI assistant.
+It includes feedback collection, analysis, agent improvement, and persistent storage.
 
-Following the LangChain agents-from-scratch pattern.
+Following the LangChain agents-from-scratch human-in-the-loop pattern.
 """
 
-from .feedback_collector import FeedbackCollector, FeedbackItem
+from .feedback_collector import (
+    FeedbackCollector, 
+    FeedbackItem, 
+    FeedbackType, 
+    FeedbackRating
+)
 from .feedback_analyzer import FeedbackAnalyzer
-from .agent_improver import AgentImprover
+from .agent_improver import AgentImprover, ImprovementAction, ImprovementResult
 from .feedback_database import FeedbackDatabase
 
 __all__ = [
-    "FeedbackCollector",
-    "FeedbackItem", 
-    "FeedbackAnalyzer",
-    "AgentImprover",
-    "FeedbackDatabase"
-] 
+    'FeedbackCollector',
+    'FeedbackItem', 
+    'FeedbackType',
+    'FeedbackRating',
+    'FeedbackAnalyzer',
+    'AgentImprover',
+    'ImprovementAction',
+    'ImprovementResult',
+    'FeedbackDatabase'
+]
