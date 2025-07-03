@@ -379,4 +379,80 @@ def get_email_summary(
         return result
     
     except Exception as e:
-        return f"❌ Error getting email summary: {str(e)}" 
+        return f"❌ Error getting email summary: {str(e)}"
+
+def schedule_meeting(
+    attendees: List[str],
+    subject: str,
+    date: str,
+    time: str,
+    duration: int = 60,
+    location: str = "",
+    description: str = "",
+    user_id: str = None
+) -> str:
+    """
+    Schedule a meeting and send calendar invites to attendees.
+    
+    Args:
+        attendees: List of attendee email addresses
+        subject: Meeting subject/title
+        date: Meeting date (YYYY-MM-DD format)
+        time: Meeting time (HH:MM format)
+        duration: Meeting duration in minutes (default: 60)
+        location: Meeting location (optional)
+        description: Meeting description (optional)
+        user_id: User ID for tracking
+    
+    Returns:
+        Confirmation message with meeting details
+    """
+    if not user_id:
+        return "❌ User ID is required to schedule meetings"
+    
+    if not attendees:
+        return "❌ At least one attendee is required"
+    
+    try:
+        # Validate date and time format
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+            datetime.strptime(time, "%H:%M")
+        except ValueError:
+            return "❌ Invalid date or time format. Use YYYY-MM-DD for date and HH:MM for time"
+        
+        # Create meeting data structure
+        meeting_data = {
+            "meeting_id": f"meeting_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
+            "attendees": attendees,
+            "subject": subject,
+            "date": date,
+            "time": time,
+            "duration": duration,
+            "location": location,
+            "description": description,
+            "status": "scheduled",
+            "created_at": datetime.now().isoformat(),
+            "user_id": user_id
+        }
+        
+        # Save meeting to DynamoDB
+        if dynamodb_service.save_meeting(user_id, meeting_data):
+            attendees_str = ", ".join(attendees)
+            result = f"✅ Meeting scheduled successfully!\n\n"
+            result += f"📅 Subject: {subject}\n"
+            result += f"📅 Date: {date} at {time}\n"
+            result += f"⏱️ Duration: {duration} minutes\n"
+            result += f"👥 Attendees: {attendees_str}\n"
+            if location:
+                result += f"📍 Location: {location}\n"
+            if description:
+                result += f"📝 Description: {description}\n"
+            result += f"\n📧 Calendar invites will be sent to all attendees."
+            
+            return result
+        else:
+            return "❌ Failed to save meeting to database"
+    
+    except Exception as e:
+        return f"❌ Failed to schedule meeting: {str(e)}" 

@@ -30,6 +30,7 @@ class ReminderAgent:
             model_name: The LLM model to use for the agent
             user_id: User ID for user-specific functionality
         """
+        self.name = "reminder_agent"  # Add name attribute for supervisor
         self.model_name = model_name
         self.user_id = user_id
         self.llm = ChatOpenAI(

@@ -41,11 +41,12 @@ class EmailAgent:
     
     def __init__(self, user_id: str = None):
         """
-        Initialize the Email Agent.
+        Initialize the Email Agent with tools and persona.
         
         Args:
-            user_id: User ID for user-specific operations
+            user_id: User ID for user-specific functionality
         """
+        self.name = "email_agent"  # Add name attribute for supervisor
         self.user_id = user_id
         self.dynamodb_service = DynamoDBService()
         self.persona = self._get_persona()

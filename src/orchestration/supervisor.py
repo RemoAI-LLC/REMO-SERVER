@@ -98,9 +98,9 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
         # Create the supervisor with all agents
         supervisor = create_supervisor(
             agents=[
-                self.reminder_agent.get_agent(),
-                self.todo_agent.get_agent(),
-                self.email_agent.get_agent()
+                self.reminder_agent,
+                self.todo_agent,
+                self.email_agent
             ],
             model=self.llm,
             prompt=supervisor_prompt

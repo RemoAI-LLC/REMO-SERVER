@@ -211,18 +211,17 @@ class MemoryUtils:
             r'\b(?:set|create|add)\s+(?:a\s+)?(?:reminder|remind|alert|alarm|notification)\s+(?:for|about|to)\b',
             # Time-based patterns with explicit reminder context
             r'\b(?:remind me|set reminder|create reminder)\s+(?:for|about|to)\b',
-            # Wake up and appointment patterns
+            # Wake up patterns (not meeting/appointment)
             r'\b(?:wake up|wake me|get up)\s+(?:at|by)\b',
-            r'\b(?:appointment|meeting)\s+(?:at|on|for)\b',
-            # Schedule patterns
-            r'\b(?:schedule|book)\s+(?:an\s+)?(?:appointment|meeting|call)\b'
+            # Only schedule patterns that explicitly mention reminder/alert/alarm
+            r'\b(?:schedule|book)\s+(?:a\s+)?(?:reminder|alert|alarm|notification)\b'
         ]
         
         # Check for reminder patterns
         has_reminder_pattern = any(re.search(pattern, message_lower) for pattern in reminder_patterns)
         
         # Check for explicit reminder keywords (more specific)
-        reminder_keywords = ["reminder", "remind", "alert", "alarm", "don't forget", "remember", "notification", "wake up", "appointment", "schedule"]
+        reminder_keywords = ["reminder", "remind", "alert", "alarm", "don't forget", "remember", "notification", "wake up"]
         has_reminder_keywords = any(keyword in message_lower for keyword in reminder_keywords)
         
         # Check for time information
@@ -420,10 +419,14 @@ class MemoryUtils:
         # Email scheduling patterns
         schedule_patterns = [
             r'\b(schedule|set)\s+(?:an?\s+)?(?:email|mail)\b',
-            r'\b(?:email|mail)\s+(?:for|at|on)\s+(?:tomorrow|later|next week)\b'
+            r'\b(?:email|mail)\s+(?:for|at|on)\s+(?:tomorrow|later|next week)\b',
+            # Meeting scheduling patterns
+            r'\b(schedule|set|book)\s+(?:an?\s+)?(?:meeting|appointment|call)\b',
+            r'\b(?:meeting|appointment|call)\s+(?:for|at|on|with)\b',
+            r'\b(?:schedule|set)\s+(?:a\s+)?(?:meet)\b'
         ]
         if any(re.search(pattern, message_lower) for pattern in schedule_patterns):
-            return True, {"action": "schedule_email", "confidence": 0.8}
+            return True, {"action": "schedule_email", "confidence": 0.9}
         
         # Email management patterns
         manage_patterns = [
@@ -435,7 +438,7 @@ class MemoryUtils:
             return True, {"action": "manage_email", "confidence": 0.8}
         
         # General email keywords
-        email_keywords = ["email", "mail", "inbox", "outbox", "compose", "send", "draft"]
+        email_keywords = ["email", "mail", "inbox", "outbox", "compose", "send", "draft", "meeting", "appointment", "call"]
         if any(keyword in message_lower for keyword in email_keywords):
             return True, {"action": "general_email", "confidence": 0.6}
         

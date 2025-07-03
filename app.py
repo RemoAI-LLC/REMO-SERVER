@@ -2,6 +2,7 @@
 Remo API - Full orchestration, memory, and persona logic from remo.py, exposed as a FastAPI server.
 """
 
+from dotenv import load_dotenv
 import os
 import json
 from datetime import datetime
@@ -9,7 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+
 import requests
 import base64
 from typing import Annotated
@@ -423,7 +424,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "dynamodb_available": dynamodb_service.table is not None
+        "dynamodb_available": dynamodb_service.dynamodb is not None
     }
 
 # Feedback System Endpoints
@@ -626,6 +627,87 @@ async def export_feedback(user_id: str, format: str = "json"):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error exporting feedback: {str(e)}")
+
+# Google OAuth Authentication Endpoints
+
+# In-memory storage for user credentials (for development)
+user_credentials = {}
+
+@app.get("/auth/google/login")
+async def google_login(user_id: str):
+    """Initiate Google OAuth login for Gmail access."""
+    try:
+        from src.utils.google_calendar_service import GoogleCalendarService
+        
+        calendar_service = GoogleCalendarService()
+        authorization_url = calendar_service.get_authorization_url(user_id)
+        
+        return {
+            "authorization_url": authorization_url,
+            "state": "google_oauth_state",  # In production, generate unique state
+            "message": "Redirect user to this URL to authorize Gmail access"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error initiating Google OAuth: {str(e)}")
+
+@app.get("/auth/google/callback")
+async def google_callback(code: str, state: str):
+    user_id = state
+    try:
+        from src.utils.google_calendar_service import GoogleCalendarService
+        
+        calendar_service = GoogleCalendarService()
+        credentials = calendar_service.exchange_code_for_tokens(code)
+        
+        # Store credentials (in production, use secure database)
+        user_credentials[user_id] = credentials
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "message": "Gmail access authorized successfully",
+            "scopes": credentials.get('scopes', [])
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error completing OAuth: {str(e)}")
+
+@app.get("/auth/status/{user_id}")
+async def auth_status(user_id: str):
+    """Check if user is authenticated with Google."""
+    try:
+        credentials = user_credentials.get(user_id)
+        
+        if credentials:
+            return {
+                "user_id": user_id,
+                "authenticated": True,
+                "scopes": credentials.get('scopes', []),
+                "message": "User is authenticated with Gmail"
+            }
+        else:
+            return {
+                "user_id": user_id,
+                "authenticated": False,
+                "scopes": [],
+                "message": "User is not authenticated with Gmail"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking auth status: {str(e)}")
+
+@app.delete("/auth/logout/{user_id}")
+async def google_logout(user_id: str):
+    """Logout user from Google OAuth."""
+    try:
+        if user_id in user_credentials:
+            del user_credentials[user_id]
+        
+        return {
+            "user_id": user_id,
+            "success": True,
+            "message": "User logged out successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error logging out: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1279,4 +1279,43 @@ class DynamoDBService:
             
         except Exception as e:
             print(f"Error saving scheduled email: {e}")
+            return False
+
+    def save_meeting(self, user_id: str, meeting_data: Dict) -> bool:
+        """
+        Save a meeting to the emails table (since meetings are related to calendar/email functionality).
+        
+        Args:
+            user_id: Privy user ID
+            meeting_data: Meeting data dictionary
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.emails_table:
+            return False
+        
+        try:
+            item = {
+                'user_id': user_id,
+                'email_id': meeting_data['meeting_id'],  # Use meeting_id as email_id for consistency
+                'meeting_type': 'calendar_event',
+                'attendees': meeting_data['attendees'],
+                'subject': meeting_data['subject'],
+                'body': meeting_data.get('description', ''),
+                'date': meeting_data['date'],
+                'time': meeting_data['time'],
+                'duration': meeting_data['duration'],
+                'location': meeting_data.get('location', ''),
+                'status': meeting_data.get('status', 'scheduled'),
+                'created_at': meeting_data['created_at'],
+                'updated_at': datetime.now().isoformat(),
+                'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
+            }
+            
+            self.emails_table.put_item(Item=item)
+            return True
+            
+        except Exception as e:
+            print(f"Error saving meeting: {e}")
             return False 
