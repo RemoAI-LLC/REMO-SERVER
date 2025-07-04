@@ -13,7 +13,12 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 
-from langchain_openai import ChatOpenAI
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:
+    ChatBedrock = None
+import boto3
+import os
 
 from .feedback_collector import FeedbackItem, FeedbackType, FeedbackRating
 from .feedback_analyzer import FeedbackAnalyzer
@@ -60,12 +65,48 @@ class AgentImprover:
         self.improvement_actions: List[ImprovementAction] = []
         self.improvement_results: List[ImprovementResult] = []
         
-        # Initialize LLM for improvement generation
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.0,
-            tags=["remo", "agent-improvement"]
-        )
+        # Bedrock LLM initialization
+        model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+        region = os.getenv("AWS_REGION", "us-east-1")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        temperature = 0.0
+        if ChatBedrock:
+            self.llm = ChatBedrock(
+                model_id=model_id,
+                region_name=region,
+                model_kwargs={"temperature": temperature}
+            )
+        else:
+            class BedrockLLM:
+                def __init__(self, model_id, region, access_key, secret_key, temperature):
+                    self.model_id = model_id
+                    self.temperature = temperature
+                    self.client = boto3.client(
+                        "bedrock-runtime",
+                        region_name=region,
+                        aws_access_key_id=access_key,
+                        aws_secret_access_key=secret_key,
+                    )
+                def invoke(self, prompt):
+                    # Accepts a string prompt for improvement generation
+                    body = {
+                        "prompt": prompt,
+                        "max_tokens": 1024,
+                        "temperature": self.temperature,
+                    }
+                    response = self.client.invoke_model(
+                        modelId=self.model_id,
+                        body=json.dumps(body),
+                        contentType="application/json",
+                        accept="application/json"
+                    )
+                    result = json.loads(response["body"].read())
+                    class Result:
+                        def __init__(self, content):
+                            self.content = content
+                    return Result(result.get("completion") or result.get("output", ""))
+            self.llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
     
     def generate_improvement_actions(self, feedback_items: List[FeedbackItem]) -> List[ImprovementAction]:
         """

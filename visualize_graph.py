@@ -8,7 +8,6 @@ from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
-from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 import os
 
@@ -21,6 +20,13 @@ from src.memory import ConversationMemoryManager, ConversationContextManager, Me
 # Load environment variables
 load_dotenv()
 
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:
+    ChatBedrock = None
+import boto3
+import json
+
 def visualize_complete_system():
     """Visualize the complete Remo system including memory and multi-agent orchestration."""
     
@@ -29,7 +35,7 @@ def visualize_complete_system():
     
     # Initialize the supervisor orchestrator
     try:
-        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
+        supervisor_orchestrator = SupervisorOrchestrator(model_name=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"))
         print("✅ Multi-agent system initialized successfully")
     except Exception as e:
         print(f"❌ Failed to initialize multi-agent system: {e}")
@@ -233,7 +239,7 @@ def show_system_stats():
     
     # Agent information
     try:
-        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
+        supervisor_orchestrator = SupervisorOrchestrator(model_name=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0"))
         agent_info = supervisor_orchestrator.get_agent_info()
         print(f"• Specialized Agents: {len(agent_info)}")
         for agent_name, description in agent_info.items():

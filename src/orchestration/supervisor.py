@@ -7,11 +7,18 @@ Enhanced with memory integration for better context awareness.
 
 from typing import List, Dict, Any
 from langgraph_supervisor import create_supervisor
-from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from ..agents.reminders.reminder_agent import ReminderAgent
 from ..agents.todo.todo_agent import TodoAgent
 from ..agents.email.email_agent import EmailAgent
+import json
+import os
+
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:
+    ChatBedrock = None
+import boto3
 
 class SupervisorOrchestrator:
     """
@@ -30,11 +37,49 @@ class SupervisorOrchestrator:
         """
         self.model_name = model_name
         self.user_id = user_id
-        self.llm = ChatOpenAI(
-            model=model_name,
-            temperature=0.5,  # Balanced temperature for routing decisions
-            tags=["remo", "supervisor-orchestrator"]
-        )
+        
+        # Bedrock LLM initialization
+        model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+        region = os.getenv("AWS_REGION", "us-east-1")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        temperature = 0.5
+        if ChatBedrock:
+            self.llm = ChatBedrock(
+                model_id=model_id,
+                region_name=region,
+                model_kwargs={"temperature": temperature}
+            )
+        else:
+            class BedrockLLM:
+                def __init__(self, model_id, region, access_key, secret_key, temperature):
+                    self.model_id = model_id
+                    self.temperature = temperature
+                    self.client = boto3.client(
+                        "bedrock-runtime",
+                        region_name=region,
+                        aws_access_key_id=access_key,
+                        aws_secret_access_key=secret_key,
+                    )
+                def invoke(self, messages):
+                    prompt = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in messages])
+                    body = {
+                        "prompt": prompt,
+                        "max_tokens": 1024,
+                        "temperature": self.temperature,
+                    }
+                    response = self.client.invoke_model(
+                        modelId=self.model_id,
+                        body=json.dumps(body),
+                        contentType="application/json",
+                        accept="application/json"
+                    )
+                    result = json.loads(response["body"].read())
+                    class Result:
+                        def __init__(self, content):
+                            self.content = content
+                    return Result(result.get("completion") or result.get("output", ""))
+            self.llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
         
         # Initialize specialized agents with user ID
         self.reminder_agent = ReminderAgent(model_name, user_id)

@@ -5,7 +5,13 @@ Uses LangGraph's create_react_agent for reasoning and tool execution.
 """
 
 from langgraph.prebuilt import create_react_agent
-from langchain_openai import ChatOpenAI
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:
+    ChatBedrock = None
+import boto3
+import os
+import json
 from langchain.tools import tool
 from .reminder_tools import (
     set_reminder, 
@@ -33,11 +39,49 @@ class ReminderAgent:
         self.name = "reminder_agent"  # Add name attribute for supervisor
         self.model_name = model_name
         self.user_id = user_id
-        self.llm = ChatOpenAI(
-            model=model_name,
-            temperature=0.3,  # Lower temperature for more consistent reminder management
-            tags=["remo", "reminder-agent"]
-        )
+        
+        # Bedrock LLM initialization
+        model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+        region = os.getenv("AWS_REGION", "us-east-1")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        temperature = 0.3
+        if ChatBedrock:
+            self.llm = ChatBedrock(
+                model_id=model_id,
+                region_name=region,
+                model_kwargs={"temperature": temperature}
+            )
+        else:
+            class BedrockLLM:
+                def __init__(self, model_id, region, access_key, secret_key, temperature):
+                    self.model_id = model_id
+                    self.temperature = temperature
+                    self.client = boto3.client(
+                        "bedrock-runtime",
+                        region_name=region,
+                        aws_access_key_id=access_key,
+                        aws_secret_access_key=secret_key,
+                    )
+                def invoke(self, messages):
+                    prompt = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in messages])
+                    body = {
+                        "prompt": prompt,
+                        "max_tokens": 1024,
+                        "temperature": self.temperature,
+                    }
+                    response = self.client.invoke_model(
+                        modelId=self.model_id,
+                        body=json.dumps(body),
+                        contentType="application/json",
+                        accept="application/json"
+                    )
+                    result = json.loads(response["body"].read())
+                    class Result:
+                        def __init__(self, content):
+                            self.content = content
+                    return Result(result.get("completion") or result.get("output", ""))
+            self.llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
         
         # Define the agent's specialized persona
         self.persona = """You are a reminder management specialist within the Remo AI assistant ecosystem. 
