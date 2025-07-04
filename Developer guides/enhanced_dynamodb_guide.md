@@ -1,8 +1,81 @@
-# Enhanced DynamoDB Integration Guide for Remo AI Assistant
+# 🛠️ Enhanced DynamoDB Guide
 
-## Overview
+## 🎯 Learning Outcomes
 
-This guide covers the enhanced DynamoDB integration for Remo AI Assistant, which provides proper NoSQL table structure for user-specific data storage, conversation memory, reminders, todos, and user details.
+- Understand advanced DynamoDB usage and schema design in Remo-Server
+- Learn about GSIs, TTL, batch operations, and optimization patterns
+- See how to extend, debug, or optimize DynamoDB integration
+- Find links to user-specific, memory, and API guides
+
+---
+
+## 1. Overview
+
+Remo-Server uses DynamoDB for robust, scalable, user-specific data storage. This guide covers advanced features:
+
+- Global Secondary Indexes (GSIs) for efficient querying
+- Time-to-Live (TTL) for automatic cleanup
+- Batch operations and pagination
+- Table schema for emails, reminders, todos, and memory
+
+---
+
+## 2. Advanced Table Schema
+
+- **Emails Table**: GSIs for status and priority
+- **Reminders/Todos**: Partitioned by user_id, sort by data_type
+- **TTL**: Used for auto-expiry of old data
+- **Batch Operations**: Efficient for large lists and updates
+
+---
+
+## 3. Optimization Patterns
+
+- Use GSIs for fast filtering (e.g., unread emails, high-priority todos)
+- Use TTL for automatic cleanup of old reminders/emails
+- Use batch writes/reads for performance
+- Paginate large result sets in the API
+
+---
+
+## 4. Code Examples
+
+```python
+from src.utils.dynamodb_service import DynamoDBService
+service = DynamoDBService()
+
+# Save a batch of todos
+for todo in todos:
+    service.save_todo(user_id, todo)
+
+# Query by priority
+high_priority = service.get_todos(user_id, priority="high")
+
+# Use TTL for auto-expiry
+# (Set 'ttl' attribute in your item to a future timestamp)
+```
+
+---
+
+## 5. Best Practices
+
+- Always use user_id for all operations
+- Monitor and backup tables regularly
+- Use GSIs and TTL for performance and cost savings
+- Test with large datasets and multiple users
+
+---
+
+## 6. Related Guides & Next Steps
+
+- [DynamoDB Integration Guide](./dynamodb_integration_guide.md)
+- [User-Specific Implementation Summary](./user_specific_implementation_summary.md)
+- [Conversation Memory Guide](./conversation_memory_guide.md)
+- [API Integration Guide](./api_integration_guide.md)
+
+---
+
+**For more details, see the code in `src/utils/dynamodb_service.py` and the user/memory guides.**
 
 ## Table of Contents
 
@@ -50,10 +123,12 @@ The enhanced DynamoDB integration uses a multi-table approach instead of the pre
 ### 1. remo-reminders Table
 
 **Primary Key Structure:**
+
 - Partition Key: `user_id` (String) - Privy user ID
 - Sort Key: `reminder_id` (String) - Unique reminder identifier
 
 **Attributes:**
+
 - `title` (String) - Reminder title
 - `description` (String) - Optional description
 - `reminding_time` (String) - ISO datetime when reminder should trigger
@@ -63,6 +138,7 @@ The enhanced DynamoDB integration uses a multi-table approach instead of the pre
 - `ttl` (Number) - Time-to-live for automatic cleanup (1 year)
 
 **Global Secondary Indexes:**
+
 - `status-index`: Query reminders by status
   - Partition Key: `user_id`
   - Sort Key: `status`
@@ -70,10 +146,12 @@ The enhanced DynamoDB integration uses a multi-table approach instead of the pre
 ### 2. remo-todos Table
 
 **Primary Key Structure:**
+
 - Partition Key: `user_id` (String) - Privy user ID
 - Sort Key: `todo_id` (String) - Unique todo identifier
 
 **Attributes:**
+
 - `title` (String) - Todo title
 - `description` (String) - Optional description
 - `priority` (String) - Priority: "low", "medium", "high", "urgent"
@@ -83,6 +161,7 @@ The enhanced DynamoDB integration uses a multi-table approach instead of the pre
 - `ttl` (Number) - Time-to-live for automatic cleanup (1 year)
 
 **Global Secondary Indexes:**
+
 - `status-index`: Query todos by status
   - Partition Key: `user_id`
   - Sort Key: `status`
@@ -93,9 +172,11 @@ The enhanced DynamoDB integration uses a multi-table approach instead of the pre
 ### 3. remo-users Table
 
 **Primary Key Structure:**
+
 - Partition Key: `privy_id` (String) - Privy user ID
 
 **Attributes:**
+
 - `email` (String) - User's email address
 - `wallet` (String) - Wallet address (if wallet login)
 - `first_name` (String) - User's first name
@@ -107,10 +188,12 @@ The enhanced DynamoDB integration uses a multi-table approach instead of the pre
 ### 4. remo-conversations Table
 
 **Primary Key Structure:**
+
 - Partition Key: `user_id` (String) - Privy user ID
 - Sort Key: `timestamp` (String) - ISO datetime of message
 
 **Attributes:**
+
 - `role` (String) - Message role: "user" or "assistant"
 - `content` (String) - Message content
 - `ttl` (Number) - Time-to-live for automatic cleanup (30 days)
@@ -361,6 +444,7 @@ python scripts/setup_dynamodb.py
 ```
 
 This script will:
+
 - Check environment variables
 - Create all required DynamoDB tables
 - Test user data isolation
@@ -383,6 +467,7 @@ python app.py
 **Error:** `AWS credentials not found`
 
 **Solution:**
+
 - Ensure AWS credentials are set in environment variables
 - Check that `.env` file is in the correct location
 - Verify AWS credentials have DynamoDB permissions
@@ -392,6 +477,7 @@ python app.py
 **Error:** `Error creating table`
 
 **Solution:**
+
 - Check AWS permissions (DynamoDB:CreateTable)
 - Verify AWS region is correct
 - Ensure table names don't conflict with existing tables
@@ -401,6 +487,7 @@ python app.py
 **Error:** `Failed to save data`
 
 **Solution:**
+
 - Verify user_id is not None
 - Check DynamoDB service initialization
 - Ensure proper data structure
@@ -410,6 +497,7 @@ python app.py
 **Error:** `Error loading conversation history`
 
 **Solution:**
+
 - Check DynamoDB connection
 - Verify user_id format
 - Ensure conversation table exists
@@ -425,6 +513,7 @@ DEBUG=true
 ### Monitoring
 
 Monitor DynamoDB usage in AWS Console:
+
 - Go to DynamoDB service
 - Check table metrics
 - Monitor read/write capacity
@@ -491,10 +580,11 @@ For issues or questions:
 The enhanced DynamoDB integration provides a robust, scalable foundation for Remo AI Assistant's user-specific data storage. The multi-table approach ensures proper data isolation, efficient querying, and automatic cleanup while maintaining backward compatibility.
 
 Key benefits:
+
 - ✅ Proper NoSQL design
 - ✅ User data isolation
 - ✅ Automatic TTL cleanup
 - ✅ Status and priority tracking
 - ✅ Scalable architecture
 - ✅ Comprehensive testing
-- ✅ Easy maintenance 
+- ✅ Easy maintenance

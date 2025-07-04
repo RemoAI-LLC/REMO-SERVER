@@ -1,34 +1,70 @@
-# 🖼️ Visualization & Debugging
+# 🕵️ Visualization & Debugging Guide
 
-Remo provides tools for visualizing the multi-agent orchestration system and for debugging agent interactions.
+## 🎯 Learning Outcomes
 
-## Visualizing the Agent Graph
+- Understand how to visualize agent orchestration and conversation flows in Remo-Server
+- Learn about debugging tools, test scripts, and best practices
+- See how to test, debug, and optimize agent flows and memory
+- Find links to orchestration, memory, and agent guides
 
-- Run `python visualize_graph.py` to generate a PNG diagram of the orchestration structure.
-- The script initializes the supervisor orchestrator and saves `remo_multi_agent_graph.png`.
-- If run in a Jupyter notebook, the graph is displayed inline.
+---
 
-## Interpreting the Diagram
+## 1. Overview
 
-- The diagram shows the supervisor pattern: user input flows to Remo, then to the supervisor, then to specialized agents.
-- Each agent is shown with its tools and responsibilities.
-- Use the diagram to understand and debug routing and agent relationships.
+Remo-Server provides tools for visualizing the multi-agent system and debugging orchestration, memory, and agent flows. This guide covers:
 
-## LangSmith Tracing
+- Visualizing the agent orchestration graph
+- Debugging conversation memory and context
+- Using test scripts for reminders, todos, and feedback
 
-- All user interactions are traced in LangSmith for observability.
-- Use LangSmith to monitor, debug, and optimize agent workflows.
-- Check traces for errors, bottlenecks, or unexpected routing.
+---
 
-## Debugging Tips
+## 2. Visualization Tools
 
-- Add debug prints in agent and supervisor code to trace execution.
-- Test tools and agents individually before integrating.
-- Use the visualization to spot missing or misconfigured agents.
-- Review LangSmith traces for detailed execution flow.
+- **`visualize_graph.py`**: Generates a PNG of the agent orchestration graph
+- **Interactive API Docs**: Use `/docs` endpoint for live API testing
 
-## Best Practices
+### Example
 
-- Visualize the system after adding or modifying agents.
-- Use LangSmith for all major debugging and optimization efforts.
-- Keep orchestration logic clear and well-documented.
+```bash
+python visualize_graph.py
+# Output: remo_multi_agent_graph.png
+```
+
+---
+
+## 3. Debugging & Testing
+
+- **Test Scripts**: Run `test_*.py` scripts for reminders, todos, feedback, and data isolation
+- **Debug Logging**: Add print/log statements in agents, memory, and orchestration code
+- **API Testing**: Use `/health` and `/chat` endpoints for live checks
+
+### Example
+
+```bash
+python test_reminder_detection.py
+python test_todo_functionality.py
+python test_data_isolation.py
+```
+
+---
+
+## 4. Best Practices
+
+- Test with multiple users and edge cases
+- Use debug logging for intent detection and routing
+- Visualize agent flows after adding new agents or orchestration logic
+- Use API docs for rapid endpoint testing
+
+---
+
+## 5. Related Guides & Next Steps
+
+- [Orchestration & Routing Guide](./orchestration_and_routing.md)
+- [Conversation Memory Guide](./conversation_memory_guide.md)
+- [Creating New Agents](./creating_new_agents.md)
+- [API Integration Guide](./api_integration_guide.md)
+
+---
+
+**For more details, see the code in `visualize_graph.py`, test scripts, and the orchestration/memory guides.**
