@@ -1318,4 +1318,39 @@ class DynamoDBService:
             
         except Exception as e:
             print(f"Error saving meeting: {e}")
-            return False 
+            return False
+
+    def save_google_credentials(self, user_id: str, credentials: dict, google_email: str) -> bool:
+        """
+        Save Google OAuth credentials and email to the users table.
+        """
+        if not self.users_table:
+            return False
+        try:
+            item = {
+                'privy_id': user_id,
+                'google_credentials': json.dumps(credentials),
+                'google_email': google_email,
+                'updated_at': datetime.now().isoformat()
+            }
+            self.users_table.put_item(Item=item)
+            return True
+        except Exception as e:
+            print(f"Error saving Google credentials: {e}")
+            return False
+
+    def get_google_credentials(self, user_id: str) -> Optional[dict]:
+        """
+        Retrieve Google OAuth credentials for a user from the users table.
+        """
+        if not self.users_table:
+            return None
+        try:
+            response = self.users_table.get_item(Key={'privy_id': user_id})
+            item = response.get('Item')
+            if item and 'google_credentials' in item:
+                return json.loads(item['google_credentials'])
+            return None
+        except Exception as e:
+            print(f"Error retrieving Google credentials: {e}")
+            return None 

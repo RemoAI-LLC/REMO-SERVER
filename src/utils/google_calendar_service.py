@@ -18,6 +18,8 @@ import sys
 # Global storage for user credentials (moved from app.py)
 user_credentials = {}
 
+CREDENTIALS_FILE = 'google_user_credentials.json'
+
 class GoogleCalendarService:
     """
     Service for Google Calendar integration.
@@ -191,6 +193,10 @@ class GoogleCalendarService:
                     'useDefault': True,
                 },
             }
+            
+            # Set organizer if provided
+            if event_data.get('organizer_email'):
+                event['organizer'] = {'email': event_data['organizer_email']}
             
             # Create the event
             event = service.events().insert(
@@ -525,12 +531,26 @@ def create_google_calendar_event(user_id, subject, start_time, end_time, attende
         }
 
 def set_user_credentials(user_id, credentials):
-    """Set user credentials for Google Calendar access."""
-    user_credentials[user_id] = credentials
+    try:
+        with open(CREDENTIALS_FILE, 'r') as f:
+            all_creds = json.load(f)
+    except FileNotFoundError:
+        all_creds = {}
+    all_creds[user_id] = credentials
+    with open(CREDENTIALS_FILE, 'w') as f:
+        json.dump(all_creds, f)
 
 def get_user_credentials(user_id):
-    """Get user credentials for Google Calendar access."""
-    return user_credentials.get(user_id)
+    try:
+        with open(CREDENTIALS_FILE, 'r') as f:
+            all_creds = json.load(f)
+        creds = all_creds.get(user_id)
+        # If creds is a wrapper dict with 'credentials', return that
+        if isinstance(creds, dict) and 'credentials' in creds:
+            return creds['credentials']
+        return creds
+    except FileNotFoundError:
+        return None
 
 def remove_user_credentials(user_id):
     """Remove user credentials."""

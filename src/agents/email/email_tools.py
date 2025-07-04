@@ -409,10 +409,8 @@ def schedule_meeting(
     """
     if not user_id:
         return "❌ User ID is required to schedule meetings"
-    
     if not attendees:
         return "❌ At least one attendee is required"
-    
     try:
         # Validate date and time format
         try:
@@ -420,7 +418,6 @@ def schedule_meeting(
             datetime.strptime(time, "%H:%M")
         except ValueError:
             return "❌ Invalid date or time format. Use YYYY-MM-DD for date and HH:MM for time"
-        
         # Create meeting data structure
         meeting_data = {
             "meeting_id": f"meeting_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
@@ -435,7 +432,6 @@ def schedule_meeting(
             "created_at": datetime.now().isoformat(),
             "user_id": user_id
         }
-        
         # Save meeting to DynamoDB
         if dynamodb_service.save_meeting(user_id, meeting_data):
             attendees_str = ", ".join(attendees)
@@ -449,10 +445,8 @@ def schedule_meeting(
             if description:
                 result += f"📝 Description: {description}\n"
             result += f"\n📧 Calendar invites will be sent to all attendees."
-            
             return result
         else:
             return "❌ Failed to save meeting to database"
-    
     except Exception as e:
         return f"❌ Failed to schedule meeting: {str(e)}" 

@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
 
 import requests
@@ -27,6 +27,7 @@ from src.feedback import (
     FeedbackCollector, FeedbackAnalyzer, AgentImprover, FeedbackDatabase,
     FeedbackType, FeedbackRating
 )
+from src.utils.google_calendar_service import GoogleCalendarService
 
 load_dotenv()
 
@@ -330,6 +331,16 @@ class ImprovementActionResponse(BaseModel):
     status: str
     created_at: str
 
+class CalendarEventRequest(BaseModel):
+    user_id: str
+    subject: str
+    start_time: str
+    end_time: str
+    attendees: list[str]
+    location: str = ""
+    description: str = ""
+    timezone: str = "UTC"
+
 @app.get("/")
 async def root():
     return {"message": "Remo AI Assistant API is running!"}
@@ -630,15 +641,10 @@ async def export_feedback(user_id: str, format: str = "json"):
 
 # Google OAuth Authentication Endpoints
 
-# In-memory storage for user credentials (for development)
-user_credentials = {}
-
 @app.get("/auth/google/login")
 async def google_login(user_id: str):
     """Initiate Google OAuth login for Gmail access."""
     try:
-        from src.utils.google_calendar_service import GoogleCalendarService
-        
         calendar_service = GoogleCalendarService()
         authorization_url = calendar_service.get_authorization_url(user_id)
         
@@ -654,17 +660,16 @@ async def google_login(user_id: str):
 async def google_callback(code: str, state: str):
     user_id = state
     try:
-        from src.utils.google_calendar_service import GoogleCalendarService
-        
         calendar_service = GoogleCalendarService()
         credentials = calendar_service.exchange_code_for_tokens(code)
-        
-        # Store credentials (in production, use secure database)
-        user_credentials[user_id] = credentials
-        
+        google_email = credentials.get('user_info', {}).get('email')
+        print(f"[DEBUG] Storing credentials for user_id: {user_id}, google_email: {google_email}")
+        # Store credentials and google_email in DynamoDB
+        dynamodb_service.save_google_credentials(user_id, credentials, google_email)
         return {
             "success": True,
             "user_id": user_id,
+            "google_email": google_email,
             "message": "Gmail access authorized successfully",
             "scopes": credentials.get('scopes', [])
         }
@@ -675,13 +680,14 @@ async def google_callback(code: str, state: str):
 async def auth_status(user_id: str):
     """Check if user is authenticated with Google."""
     try:
-        credentials = user_credentials.get(user_id)
-        
+        credentials = dynamodb_service.get_google_credentials(user_id)
         if credentials:
+            google_email = credentials.get('user_info', {}).get('email')
             return {
                 "user_id": user_id,
                 "authenticated": True,
                 "scopes": credentials.get('scopes', []),
+                "google_email": google_email,
                 "message": "User is authenticated with Gmail"
             }
         else:
@@ -689,6 +695,7 @@ async def auth_status(user_id: str):
                 "user_id": user_id,
                 "authenticated": False,
                 "scopes": [],
+                "google_email": None,
                 "message": "User is not authenticated with Gmail"
             }
     except Exception as e:
@@ -698,9 +705,8 @@ async def auth_status(user_id: str):
 async def google_logout(user_id: str):
     """Logout user from Google OAuth."""
     try:
-        if user_id in user_credentials:
-            del user_credentials[user_id]
-        
+        # Remove credentials from DynamoDB
+        # (Optional: implement a method in DynamoDBService to delete credentials)
         return {
             "user_id": user_id,
             "success": True,
@@ -708,6 +714,65 @@ async def google_logout(user_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error logging out: {str(e)}")
+
+@app.post("/calendar/create-event")
+async def create_calendar_event(request: FastAPIRequest):
+    try:
+        # Accept both JSON and form/query params
+        if request.headers.get("content-type", "").startswith("application/json"):
+            data = await request.json()
+        else:
+            data = dict(request.query_params)
+            # For repeated attendees param
+            data["attendees"] = request.query_params.getlist("attendees")
+
+        user_id = data.get("user_id")
+        organizer_email = data.get("organizer_email")
+        print(f"[DEBUG] Scheduling event for user_id: {user_id}, organizer_email: {organizer_email}")
+        credentials = dynamodb_service.get_google_credentials(user_id)
+        print(f"[DEBUG] Credentials found for user_id: {user_id}: {bool(credentials)}")
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="No Google credentials found for this user. Please connect Gmail in Integrations.")
+        if not user_id or not data.get("subject") or not data.get("start_time") or not data.get("end_time") or not data.get("attendees"):
+            raise HTTPException(status_code=400, detail="Missing required fields.")
+        if not organizer_email:
+            print(f"[DEBUG] organizer_email is None for user_id: {user_id}")
+        # Ensure attendees is a list
+        if isinstance(data["attendees"], str):
+            data["attendees"] = [data["attendees"]]
+        elif not isinstance(data["attendees"], list):
+            data["attendees"] = list(data["attendees"])
+
+        # Create the calendar event
+        event_data = {
+            "subject": data["subject"],
+            "start_time": data["start_time"],
+            "end_time": data["end_time"],
+            "attendees": data["attendees"],
+            "location": data.get("location", ""),
+            "description": data.get("description", ""),
+            "timezone": data.get("timezone", "UTC"),
+            "organizer_email": organizer_email,
+        }
+        print(f"[DEBUG] Event data: {event_data}")
+        result = GoogleCalendarService().create_calendar_event(credentials, event_data)
+        print(f"[DEBUG] Calendar event creation result: {result}")
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to create calendar event"))
+        event_link = result.get("event_link")
+
+        # Send notification email to all attendees
+        email_subject = f"Meeting Scheduled: {data['subject']}"
+        email_body = f"You have been invited to a meeting.\n\nTitle: {data['subject']}\nDate/Time: {data['start_time']} to {data['end_time']} ({data.get('timezone', 'UTC')})\nLocation: {data.get('location', '')}\nDescription: {data.get('description', '')}\n\nGoogle Calendar Link: {event_link}"
+        for email in data["attendees"]:
+            GoogleCalendarService().send_email(credentials, to=email, subject=email_subject, body=email_body)
+
+        return {"success": True, "event_link": event_link}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"[DEBUG] Exception in /calendar/create-event: {e}")
+        return {"success": False, "detail": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
