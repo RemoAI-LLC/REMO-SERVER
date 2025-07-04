@@ -28,20 +28,18 @@ class ReminderAgent:
     Handles creating, listing, updating, and managing reminders.
     """
     
-    def __init__(self, model_name: str = "gpt-4o-mini", user_id: str = None):
+    def __init__(self, user_id: str = None):
         """
         Initialize the Reminder Agent with tools and persona.
         
         Args:
-            model_name: The LLM model to use for the agent
             user_id: User ID for user-specific functionality
         """
-        self.name = "reminder_agent"  # Add name attribute for supervisor
-        self.model_name = model_name
+        self.name = "reminder_agent"
         self.user_id = user_id
         
         # Bedrock LLM initialization
-        model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+        model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1")
         region = os.getenv("AWS_REGION", "us-east-1")
         access_key = os.getenv("AWS_ACCESS_KEY_ID")
         secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")

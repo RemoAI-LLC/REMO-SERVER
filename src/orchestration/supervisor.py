@@ -27,19 +27,15 @@ class SupervisorOrchestrator:
     Enhanced with memory integration for better context awareness.
     """
     
-    def __init__(self, model_name: str = "gpt-4o-mini", user_id: str = None):
+    def __init__(self, user_id: str = None):
         """
         Initialize the supervisor orchestrator with specialized agents.
-        
         Args:
-            model_name: The LLM model to use for the supervisor
             user_id: User ID for user-specific functionality
         """
-        self.model_name = model_name
         self.user_id = user_id
-        
         # Bedrock LLM initialization
-        model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+        model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1")
         region = os.getenv("AWS_REGION", "us-east-1")
         access_key = os.getenv("AWS_ACCESS_KEY_ID")
         secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -80,12 +76,10 @@ class SupervisorOrchestrator:
                             self.content = content
                     return Result(result.get("completion") or result.get("output", ""))
             self.llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
-        
         # Initialize specialized agents with user ID
-        self.reminder_agent = ReminderAgent(model_name, user_id)
-        self.todo_agent = TodoAgent(model_name, user_id)
+        self.reminder_agent = ReminderAgent(user_id)
+        self.todo_agent = TodoAgent(user_id)
         self.email_agent = EmailAgent(user_id)
-        
         # Create the supervisor with all agents
         self.supervisor = self._create_supervisor()
     

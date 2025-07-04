@@ -44,7 +44,7 @@ graph_builder = StateGraph(State)
 dynamodb_service = DynamoDBService()
 
 # Global managers (for backward compatibility)
-supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
+supervisor_orchestrator = SupervisorOrchestrator()
 memory_manager = ConversationMemoryManager(memory_type="buffer")
 context_manager = ConversationContextManager()
 
