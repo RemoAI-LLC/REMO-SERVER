@@ -10,6 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Header, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import requests
 import base64
@@ -57,7 +58,7 @@ def get_user_manager(user_id: str):
         # Create user-specific managers
         memory_manager = ConversationMemoryManager(memory_type="buffer", user_id=user_id)
         context_manager = ConversationContextManager(user_id=user_id)
-        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini", user_id=user_id)
+        supervisor_orchestrator = SupervisorOrchestrator(user_id=user_id)
         
         user_managers[user_id] = {
             'memory_manager': memory_manager,
@@ -69,7 +70,7 @@ def get_user_manager(user_id: str):
 
 # Bedrock LLM initialization
 def get_bedrock_llm():
-    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+    model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
     region = os.getenv("AWS_REGION", "us-east-1")
     access_key = os.getenv("AWS_ACCESS_KEY_ID")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -93,12 +94,14 @@ def get_bedrock_llm():
                     aws_secret_access_key=secret_key,
                 )
             def invoke(self, messages):
-                # Compose prompt from messages
-                prompt = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in messages])
+                # Ensure content is a list of objects for each message
+                for m in messages:
+                    if isinstance(m.get("content"), str):
+                        m["content"] = [{"type": "text", "text": m["content"]}]
+                    elif isinstance(m.get("content"), list):
+                        m["content"] = [c if isinstance(c, dict) else {"type": "text", "text": c} for c in m["content"]]
                 body = {
-                    "prompt": prompt,
-                    "max_tokens": 1024,
-                    "temperature": self.temperature,
+                    "messages": messages
                 }
                 response = self.client.invoke_model(
                     modelId=self.model_id,
@@ -118,6 +121,7 @@ llm = get_bedrock_llm()
 REMO_SYSTEM_PROMPT = """You are Remo, a personal AI Assistant that can be hired by every human on the planet. Your mission is to make personal assistance accessible to everyone, not just the wealthy. You are designed to be a genuine, human-like personal assistant that understands and empathizes with people's daily needs and challenges.\n\nYou now have access to specialized AI agents that help you provide even better service:\n\n**Your Specialized Team:**\n- **Reminder Agent**: Manages reminders, alerts, and scheduled tasks\n- **Todo Agent**: Handles todo lists, task organization, and project management\n\nYour key characteristics are:\n\n1. Human-Like Interaction:\n   - Communicate naturally and conversationally\n   - Show empathy and understanding\n   - Use appropriate humor and personality\n   - Maintain a warm, friendly tone while staying professional\n   - Express emotions appropriately in responses\n\n2. Proactive Assistance:\n   - Anticipate needs before they're expressed\n   - Offer helpful suggestions proactively\n   - Remember user preferences and patterns\n   - Follow up on previous conversations\n   - Take initiative in solving problems\n\n3. Professional yet Approachable:\n   - Balance professionalism with friendliness\n   - Be respectful and considerate\n   - Maintain appropriate boundaries\n   - Show genuine interest in helping\n   - Be patient and understanding\n\n4. Task Management & Organization:\n   - Help manage daily schedules and tasks\n   - Organize and prioritize work\n   - Set reminders and follow-ups\n   - Coordinate multiple activities\n   - Keep track of important deadlines\n\n5. Problem Solving & Resourcefulness:\n   - Think creatively to solve problems\n   - Find efficient solutions\n   - Adapt to different situations\n   - Learn from each interaction\n   - Provide practical, actionable advice\n\nYour enhanced capabilities include:\n- Managing emails and communications\n- Scheduling and calendar management\n- Task and project organization\n- Research and information gathering\n- Job application assistance\n- Food ordering and delivery coordination\n- Workflow automation\n- Personal and professional task management\n- Reminder and follow-up management\n- Basic decision support\n- **NEW**: Specialized reminder management through Reminder Agent\n- **NEW**: Advanced todo and task organization through Todo Agent\n- **NEW**: Conversation memory for seamless multi-turn interactions\n\nAlways aim to:\n- Be proactive in offering solutions\n- Maintain a helpful and positive attitude\n- Focus on efficiency and productivity\n- Provide clear, actionable responses\n- Learn from each interaction to better serve the user\n- Show genuine care and understanding\n- Be resourceful and creative\n- Maintain a balance between professional and personal touch\n- **NEW**: Seamlessly coordinate with your specialized agents\n- **NEW**: Remember conversation context and continue seamlessly\n\nRemember: You're not just an AI assistant, but a personal companion that makes everyday tasks effortless and accessible to everyone. Your goal is to provide the same level of personal assistance that was once only available to the wealthy, making it accessible to every human on the planet.\n\nWhen interacting:\n1. Be natural and conversational\n2. Show personality and warmth\n3. Be proactive but not pushy\n4. Remember context and preferences\n5. Express appropriate emotions\n6. Be resourceful and creative\n7. Maintain professionalism while being friendly\n8. Show genuine interest in helping\n9. **NEW**: Coordinate with your specialized agents when needed\n10. **NEW**: Use conversation memory to provide seamless multi-turn interactions\n\nYour responses should feel like talking to a real human personal assistant who is:\n- Professional yet approachable\n- Efficient yet caring\n- Smart yet humble\n- Helpful yet not overbearing\n- Resourceful yet practical\n- **NEW**: Backed by a team of specialized experts\n- **NEW**: With perfect memory of your conversation"""
 
 def remo_chat(user_message: str, conversation_history: list = None, user_id: str = None) -> str:
+    print("[DEBUG] Entered remo_chat with message:", repr(user_message))
     # Get user-specific managers if user_id provided
     if user_id:
         user_manager = get_user_manager(user_id)
@@ -128,7 +132,7 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
         # Use global managers for backward compatibility
         memory_manager = ConversationMemoryManager(memory_type="buffer")
         context_manager = ConversationContextManager()
-        supervisor_orchestrator = SupervisorOrchestrator(model_name="gpt-4o-mini")
+        supervisor_orchestrator = SupervisorOrchestrator()
     
     # Initialize conversation if needed
     if not context_manager.conversation_start_time:
@@ -393,13 +397,10 @@ async def root():
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    """
-    Chat with Remo AI Assistant
-    """
+    print("[DEBUG] /chat endpoint called with:", repr(request.message))
     try:
         # Warmup ping detection
         if request.message == "__warmup__":
-            # Run the pipeline to warm up, but do not store or return any user-facing message
             _ = remo_chat(request.message, request.conversation_history, request.user_id)
             return ChatResponse(
                 response="",
@@ -407,9 +408,13 @@ async def chat(request: ChatRequest):
                 timestamp=datetime.now().isoformat(),
                 user_id=request.user_id
             )
-        
-        # Use the same logic as the CLI
+        print("[DEBUG] Calling remo_chat...")
         response = remo_chat(request.message, request.conversation_history, request.user_id)
+        print("[DEBUG] remo_chat returned:", repr(response))
+        # If response is blank, return a helpful error message
+        if not response or not response.strip():
+            response = "Sorry, I couldn't generate a response. Please try again or check the backend logs."
+        print("[DEBUG] Returning response to frontend:", repr(response))
         return ChatResponse(
             response=response,
             success=True,
@@ -417,11 +422,11 @@ async def chat(request: ChatRequest):
             user_id=request.user_id
         )
     except Exception as e:
+        print("[DEBUG] Exception in /chat endpoint:", str(e))
         return ChatResponse(
-            response="",
+            response=f"[ERROR] {str(e)}",
             success=False,
             timestamp=datetime.now().isoformat(),
-            error=str(e),
             user_id=request.user_id
         )
 
@@ -483,6 +488,63 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "dynamodb_available": dynamodb_service.dynamodb is not None
     }
+
+@app.get("/health/aws")
+def aws_health_check():
+    """
+    Health check endpoint for AWS DynamoDB and Bedrock LLM.
+    Returns JSON with status for both services.
+    """
+    dynamodb_status = "unknown"
+    bedrock_status = "unknown"
+    dynamodb_error = None
+    bedrock_error = None
+    # DynamoDB check
+    try:
+        db = DynamoDBService()
+        if db.dynamodb and db.reminders_table and db.todos_table and db.users_table and db.conversation_table:
+            dynamodb_status = "ok"
+        else:
+            dynamodb_status = "error"
+            dynamodb_error = "One or more tables not accessible"
+    except Exception as e:
+        dynamodb_status = "error"
+        dynamodb_error = str(e)
+    # Bedrock check
+    try:
+        import boto3
+        model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+        region = os.getenv("AWS_REGION", "us-east-1")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        temperature = 0.1
+        client = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+        )
+        prompt = "Hello, are you working?"
+        body = {
+            "prompt": prompt,
+            "max_tokens": 16,
+            "temperature": temperature,
+        }
+        response = client.invoke_model(
+            modelId=model_id,
+            body=json.dumps(body),
+            contentType="application/json",
+            accept="application/json"
+        )
+        result = json.loads(response["body"].read())
+        bedrock_status = "ok"
+    except Exception as e:
+        bedrock_status = "error"
+        bedrock_error = str(e)
+    return JSONResponse({
+        "dynamodb": {"status": dynamodb_status, "error": dynamodb_error},
+        "bedrock": {"status": bedrock_status, "error": bedrock_error}
+    })
 
 # Feedback System Endpoints
 

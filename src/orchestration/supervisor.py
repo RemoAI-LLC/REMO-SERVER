@@ -35,7 +35,7 @@ class SupervisorOrchestrator:
         """
         self.user_id = user_id
         # Bedrock LLM initialization
-        model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1")
+        model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
         region = os.getenv("AWS_REGION", "us-east-1")
         access_key = os.getenv("AWS_ACCESS_KEY_ID")
         secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -51,6 +51,7 @@ class SupervisorOrchestrator:
                 def __init__(self, model_id, region, access_key, secret_key, temperature):
                     self.model_id = model_id
                     self.temperature = temperature
+                    print(f"[BedrockLLM] Initializing with model_id={model_id}, region={region}")
                     self.client = boto3.client(
                         "bedrock-runtime",
                         region_name=region,
@@ -58,23 +59,32 @@ class SupervisorOrchestrator:
                         aws_secret_access_key=secret_key,
                     )
                 def invoke(self, messages):
-                    prompt = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in messages])
+                    # Ensure content is a list of objects for each message
+                    for m in messages:
+                        if isinstance(m.get("content"), str):
+                            m["content"] = [{"type": "text", "text": m["content"]}]
+                        elif isinstance(m.get("content"), list):
+                            m["content"] = [c if isinstance(c, dict) else {"type": "text", "text": c} for c in m["content"]]
+                    print(f"[BedrockLLM] Invoking model {self.model_id} with messages: {messages}")
                     body = {
-                        "prompt": prompt,
-                        "max_tokens": 1024,
-                        "temperature": self.temperature,
+                        "messages": messages
                     }
-                    response = self.client.invoke_model(
-                        modelId=self.model_id,
-                        body=json.dumps(body),
-                        contentType="application/json",
-                        accept="application/json"
-                    )
-                    result = json.loads(response["body"].read())
-                    class Result:
-                        def __init__(self, content):
-                            self.content = content
-                    return Result(result.get("completion") or result.get("output", ""))
+                    try:
+                        response = self.client.invoke_model(
+                            modelId=self.model_id,
+                            body=json.dumps(body),
+                            contentType="application/json",
+                            accept="application/json"
+                        )
+                        result = json.loads(response["body"].read())
+                        print(f"[BedrockLLM] Response: {str(result)[:200]}")
+                        class Result:
+                            def __init__(self, content):
+                                self.content = content
+                        return Result(result.get("completion") or result.get("output", ""))
+                    except Exception as e:
+                        print(f"[BedrockLLM] ERROR: {e}")
+                        raise
             self.llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
         # Initialize specialized agents with user ID
         self.reminder_agent = ReminderAgent(user_id)
@@ -163,12 +173,18 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
         
         # Add conversation history if provided
         if conversation_history:
-            messages.extend(conversation_history)
+            for msg in conversation_history:
+                # Ensure correct schema for each message
+                if isinstance(msg.get("content"), str):
+                    msg["content"] = [{"text": msg["content"]}]
+                elif isinstance(msg.get("content"), list):
+                    msg["content"] = [c if isinstance(c, dict) else {"text": c} for c in msg["content"]]
+                messages.append(msg)
         
-        # Add the current user input
+        # Add the current user input in correct schema
         messages.append({
             "role": "user",
-            "content": user_input
+            "content": [{"text": user_input}]
         })
         
         # Process through the supervisor
@@ -194,12 +210,18 @@ Remember: You're the conductor of an orchestra of specialists, ensuring each pla
         
         # Add conversation history if provided
         if conversation_history:
-            messages.extend(conversation_history)
+            for msg in conversation_history:
+                # Ensure correct schema for each message
+                if isinstance(msg.get("content"), str):
+                    msg["content"] = [{"text": msg["content"]}]
+                elif isinstance(msg.get("content"), list):
+                    msg["content"] = [c if isinstance(c, dict) else {"text": c} for c in msg["content"]]
+                messages.append(msg)
         
-        # Add the current user input
+        # Add the current user input in correct schema
         messages.append({
             "role": "user",
-            "content": user_input
+            "content": [{"text": user_input}]
         })
         
         # Stream through the supervisor

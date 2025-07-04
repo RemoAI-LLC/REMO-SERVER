@@ -31,6 +31,7 @@ class DynamoDBService:
         self.todos_table = None
         self.users_table = None
         self.conversation_table = None
+        self.conversation_context_table = None  # NEW: Table for conversation context
         
         # Initialize DynamoDB client
         try:
@@ -52,6 +53,7 @@ class DynamoDBService:
             
             # Ensure all tables exist
             self._ensure_tables_exist()
+            self._ensure_conversation_context_table()  # NEW: Ensure context table
             
         except NoCredentialsError:
             print("❌ AWS credentials not found. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
@@ -445,6 +447,32 @@ class DynamoDBService:
         except Exception as e:
             print(f"⚠️  Could not enable TTL for '{table_name}': {e}")
     
+    def _ensure_conversation_context_table(self):
+        """Ensure conversation context table exists."""
+        table_name = 'remo-conversation-context'
+        try:
+            self.conversation_context_table = self.dynamodb.Table(table_name)
+            self.conversation_context_table.load()
+            print(f"✅ Conversation context table '{table_name}' exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating conversation context table '{table_name}'...")
+                table = self.dynamodb.create_table(
+                    TableName=table_name,
+                    KeySchema=[
+                        {'AttributeName': 'user_id', 'KeyType': 'HASH'},
+                    ],
+                    AttributeDefinitions=[
+                        {'AttributeName': 'user_id', 'AttributeType': 'S'},
+                    ],
+                    BillingMode='PAY_PER_REQUEST'
+                )
+                table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+                self.conversation_context_table = table
+                print(f"✅ Conversation context table '{table_name}' created successfully")
+            else:
+                raise e
+    
     # ===== REMINDERS METHODS =====
     
     def save_reminder(self, user_id: str, reminder_data: Dict) -> bool:
@@ -465,6 +493,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.reminders_table:
+            print(f"[DynamoDBService] [save_reminder] Table not initialized for user_id={user_id}")
             return False
         
         try:
@@ -479,12 +508,12 @@ class DynamoDBService:
                 'updated_at': datetime.now().isoformat(),
                 'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
             }
-            
+            print(f"[DynamoDBService] [save_reminder] user_id={user_id} item={item}")
             self.reminders_table.put_item(Item=item)
             return True
             
         except Exception as e:
-            print(f"Error saving reminder: {e}")
+            print(f"[DynamoDBService] Error saving reminder for user_id={user_id}: {e}")
             return False
     
     def get_reminders(self, user_id: str, status: str = None) -> List[Dict]:
@@ -499,11 +528,11 @@ class DynamoDBService:
             List of reminder dictionaries
         """
         if not self.reminders_table:
+            print(f"[DynamoDBService] [get_reminders] Table not initialized for user_id={user_id}")
             return []
         
         try:
             if status:
-                # Use GSI to filter by status
                 response = self.reminders_table.query(
                     IndexName='status-index',
                     KeyConditionExpression='user_id = :user_id AND #status = :status',
@@ -514,16 +543,15 @@ class DynamoDBService:
                     }
                 )
             else:
-                # Get all reminders for user
                 response = self.reminders_table.query(
                     KeyConditionExpression='user_id = :user_id',
                     ExpressionAttributeValues={':user_id': user_id}
                 )
-            
+            print(f"[DynamoDBService] [get_reminders] user_id={user_id} status={status} items_count={len(response.get('Items', []))}")
             return response.get('Items', [])
             
         except Exception as e:
-            print(f"Error getting reminders: {e}")
+            print(f"[DynamoDBService] Error getting reminders for user_id={user_id}: {e}")
             return []
     
     def update_reminder_status(self, user_id: str, reminder_id: str, status: str) -> bool:
@@ -539,6 +567,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.reminders_table:
+            print(f"[DynamoDBService] [update_reminder_status] Table not initialized for user_id={user_id}")
             return False
         
         try:
@@ -554,10 +583,11 @@ class DynamoDBService:
                     ':updated_at': datetime.now().isoformat()
                 }
             )
+            print(f"[DynamoDBService] [update_reminder_status] user_id={user_id} reminder_id={reminder_id} status={status}")
             return True
             
         except Exception as e:
-            print(f"Error updating reminder status: {e}")
+            print(f"[DynamoDBService] Error updating reminder status for user_id={user_id}: {e}")
             return False
     
     def delete_reminder(self, user_id: str, reminder_id: str) -> bool:
@@ -572,6 +602,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.reminders_table:
+            print(f"[DynamoDBService] [delete_reminder] Table not initialized for user_id={user_id}")
             return False
         
         try:
@@ -581,10 +612,11 @@ class DynamoDBService:
                     'reminder_id': reminder_id
                 }
             )
+            print(f"[DynamoDBService] [delete_reminder] user_id={user_id} reminder_id={reminder_id}")
             return True
             
         except Exception as e:
-            print(f"Error deleting reminder: {e}")
+            print(f"[DynamoDBService] Error deleting reminder for user_id={user_id}: {e}")
             return False
     
     # ===== TODOS METHODS =====
@@ -607,6 +639,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.todos_table:
+            print(f"[DynamoDBService] [save_todo] Table not initialized for user_id={user_id}")
             return False
         
         try:
@@ -621,12 +654,12 @@ class DynamoDBService:
                 'updated_at': datetime.now().isoformat(),
                 'ttl': int(datetime.now().timestamp()) + (365 * 24 * 60 * 60)  # 1 year TTL
             }
-            
+            print(f"[DynamoDBService] [save_todo] user_id={user_id} item={item}")
             self.todos_table.put_item(Item=item)
             return True
             
         except Exception as e:
-            print(f"Error saving todo: {e}")
+            print(f"[DynamoDBService] Error saving todo for user_id={user_id}: {e}")
             return False
     
     def get_todos(self, user_id: str, status: str = None, priority: str = None) -> List[Dict]:
@@ -642,11 +675,11 @@ class DynamoDBService:
             List of todo dictionaries
         """
         if not self.todos_table:
+            print(f"[DynamoDBService] [get_todos] Table not initialized for user_id={user_id}")
             return []
         
         try:
             if status:
-                # Use status GSI
                 response = self.todos_table.query(
                     IndexName='status-index',
                     KeyConditionExpression='user_id = :user_id AND #status = :status',
@@ -657,7 +690,6 @@ class DynamoDBService:
                     }
                 )
             elif priority:
-                # Use priority GSI
                 response = self.todos_table.query(
                     IndexName='priority-index',
                     KeyConditionExpression='user_id = :user_id AND #priority = :priority',
@@ -668,16 +700,15 @@ class DynamoDBService:
                     }
                 )
             else:
-                # Get all todos for user
                 response = self.todos_table.query(
                     KeyConditionExpression='user_id = :user_id',
                     ExpressionAttributeValues={':user_id': user_id}
                 )
-            
+            print(f"[DynamoDBService] [get_todos] user_id={user_id} status={status} priority={priority} items_count={len(response.get('Items', []))}")
             return response.get('Items', [])
             
         except Exception as e:
-            print(f"Error getting todos: {e}")
+            print(f"[DynamoDBService] Error getting todos for user_id={user_id}: {e}")
             return []
     
     def update_todo_status(self, user_id: str, todo_id: str, status: str) -> bool:
@@ -693,6 +724,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.todos_table:
+            print(f"[DynamoDBService] [update_todo_status] Table not initialized for user_id={user_id}")
             return False
         
         try:
@@ -708,10 +740,11 @@ class DynamoDBService:
                     ':updated_at': datetime.now().isoformat()
                 }
             )
+            print(f"[DynamoDBService] [update_todo_status] user_id={user_id} todo_id={todo_id} status={status}")
             return True
             
         except Exception as e:
-            print(f"Error updating todo status: {e}")
+            print(f"[DynamoDBService] Error updating todo status for user_id={user_id}: {e}")
             return False
     
     def delete_todo(self, user_id: str, todo_id: str) -> bool:
@@ -726,6 +759,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.todos_table:
+            print(f"[DynamoDBService] [delete_todo] Table not initialized for user_id={user_id}")
             return False
         
         try:
@@ -735,10 +769,11 @@ class DynamoDBService:
                     'todo_id': todo_id
                 }
             )
+            print(f"[DynamoDBService] [delete_todo] user_id={user_id} todo_id={todo_id}")
             return True
             
         except Exception as e:
-            print(f"Error deleting todo: {e}")
+            print(f"[DynamoDBService] Error deleting todo for user_id={user_id}: {e}")
             return False
     
     # ===== USER DETAILS METHODS =====
@@ -760,6 +795,7 @@ class DynamoDBService:
             True if successful, False otherwise
         """
         if not self.users_table:
+            print(f"[DynamoDBService] [save_user_details] Table not initialized for privy_id={user_data.get('privy_id')}")
             return False
         
         try:
@@ -773,12 +809,12 @@ class DynamoDBService:
                 'created_at': datetime.now().isoformat(),
                 'updated_at': datetime.now().isoformat()
             }
-            
+            print(f"[DynamoDBService] [save_user_details] privy_id={user_data['privy_id']} item={item}")
             self.users_table.put_item(Item=item)
             return True
             
         except Exception as e:
-            print(f"Error saving user details: {e}")
+            print(f"[DynamoDBService] Error saving user details for privy_id={user_data.get('privy_id')}: {e}")
             return False
     
     def get_user_details(self, privy_id: str) -> Optional[Dict]:
@@ -792,17 +828,16 @@ class DynamoDBService:
             User details dictionary or None if not found
         """
         if not self.users_table:
+            print(f"[DynamoDBService] [get_user_details] Table not initialized for privy_id={privy_id}")
             return None
         
         try:
-            response = self.users_table.get_item(
-                Key={'privy_id': privy_id}
-            )
-            
+            response = self.users_table.get_item(Key={'privy_id': privy_id})
+            print(f"[DynamoDBService] [get_user_details] privy_id={privy_id} found={bool(response.get('Item'))}")
             return response.get('Item')
             
         except Exception as e:
-            print(f"Error getting user details: {e}")
+            print(f"[DynamoDBService] Error getting user details for privy_id={privy_id}: {e}")
             return None
     
     # ===== CONVERSATION MEMORY METHODS =====
@@ -927,58 +962,41 @@ class DynamoDBService:
     
     def save_conversation_context(self, user_id: str, context_data: Dict) -> bool:
         """
-        Save conversation context to DynamoDB.
-        
-        Args:
-            user_id: Privy user ID
-            context_data: Context data dictionary
-        
-        Returns:
-            True if successful, False otherwise
+        Save conversation context to DynamoDB (now in its own table).
         """
-        if not self.users_table:
+        if not self.conversation_context_table:
+            print(f"[DynamoDBService] [save_conversation_context] Table not initialized for user_id={user_id}")
             return False
-        
         try:
             item = {
-                'privy_id': user_id,
+                'user_id': user_id,
                 'conversation_context': context_data,
                 'updated_at': datetime.now().isoformat(),
                 'ttl': int(datetime.now().timestamp()) + (30 * 24 * 60 * 60)  # 30 days TTL
             }
-            
-            self.users_table.put_item(Item=item)
+            print(f"[DynamoDBService] [save_conversation_context] user_id={user_id} context_data={context_data}")
+            self.conversation_context_table.put_item(Item=item)
             return True
-            
         except Exception as e:
-            print(f"Error saving conversation context: {e}")
+            print(f"[DynamoDBService] Error saving conversation context for user_id={user_id}: {e}")
             return False
-    
+
     def load_conversation_context(self, user_id: str) -> Optional[Dict]:
         """
-        Load conversation context from DynamoDB.
-        
-        Args:
-            user_id: Privy user ID
-        
-        Returns:
-            Context data dictionary or None
+        Load conversation context from DynamoDB (now in its own table).
         """
-        if not self.users_table:
+        if not self.conversation_context_table:
+            print(f"[DynamoDBService] [load_conversation_context] Table not initialized for user_id={user_id}")
             return None
-        
         try:
-            response = self.users_table.get_item(
-                Key={'privy_id': user_id}
-            )
-            
+            response = self.conversation_context_table.get_item(Key={'user_id': user_id})
             if 'Item' in response:
+                print(f"[DynamoDBService] [load_conversation_context] user_id={user_id} context={response['Item'].get('conversation_context')}")
                 return response['Item'].get('conversation_context')
-            
+            print(f"[DynamoDBService] [load_conversation_context] user_id={user_id} context=None")
             return None
-            
         except Exception as e:
-            print(f"Error loading conversation context: {e}")
+            print(f"[DynamoDBService] Error loading conversation context for user_id={user_id}: {e}")
             return None
     
     # ===== UTILITY METHODS =====
