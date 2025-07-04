@@ -1,10 +1,90 @@
-# Google OAuth and Gmail Integration Guide
+# 🔐 Google OAuth & Gmail Integration Guide
 
-This guide covers the implementation of Google OAuth authentication for Gmail access in the Remo AI assistant.
+## 🎯 Learning Outcomes
 
-## Overview
+- Understand how Google OAuth and Gmail integration work in Remo-Server
+- Learn how to set up, configure, and test Google OAuth for Gmail access
+- Use and extend authentication and email reading/searching endpoints
+- Follow best practices for security, privacy, and troubleshooting
+- Know where to find deeper technical details and related guides
 
-The Google OAuth integration allows users to securely authenticate with their Google accounts and access their Gmail inbox through the Remo assistant. This enables email reading, searching, and management capabilities.
+---
+
+## 1. Overview
+
+This guide covers the implementation of Google OAuth authentication for Gmail access in the Remo AI assistant, enabling secure email reading, searching, and management.
+
+For a high-level system view, see the [Architecture Overview](./architecture_overview.md) and [Email Assistant Guide](./email_assistant_guide.md).
+
+---
+
+## 2. Step-by-Step: Google OAuth & Gmail Integration
+
+### 2.1 Google Cloud Console Setup
+
+- Enable Gmail API and create OAuth 2.0 credentials
+- Add authorized redirect URIs for local and production
+
+### 2.2 Environment Variables
+
+- Add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URI` to `.env`
+
+### 2.3 Install Dependencies
+
+- Required packages are in `requirements.txt` (see guide for details)
+
+### 2.4 API Endpoints
+
+- `/auth/google/login`: Initiate OAuth login
+- `/auth/google/callback`: Handle OAuth callback
+- `/auth/status/{user_id}`: Check authentication status
+- `/auth/logout/{user_id}`: Logout
+- `/emails/read`, `/emails/search`: Read/search emails via Gmail API
+- See [API Integration Guide](./api_integration_guide.md) for request/response patterns
+
+### 2.5 Usage Examples
+
+- Initiate OAuth, handle callback, read/search emails, check status
+- See code snippets in the guide for details
+
+### 2.6 Integration with Email Agent
+
+- Email agent can access real Gmail data for reading/searching
+- See [Email Assistant Guide](./email_assistant_guide.md) for usage
+
+---
+
+## 3. Best Practices
+
+- **Security:** Store credentials securely, use minimal Gmail scopes, and never expose secrets to frontend
+- **User Isolation:** Store credentials per user and never share between users
+- **Token Refresh:** Implement automatic token refresh and error handling
+- **Testing:** Use the provided test script and try all endpoints
+- **Documentation:** Document new endpoints and integration points
+
+---
+
+## 4. Troubleshooting
+
+- **OAuth flow fails:** Check Google Cloud credentials, redirect URIs, and Gmail API status
+- **Email reading fails:** Ensure user is authenticated and has granted required scopes
+- **Token expired:** Implement and test token refresh logic
+- **API errors:** Check endpoint logs and error messages
+- **Testing:** Use `test_google_oauth.py` for comprehensive validation
+
+---
+
+## 5. Next Steps & Related Guides
+
+- [Email Assistant Guide](./email_assistant_guide.md)
+- [API Integration Guide](./api_integration_guide.md)
+- [Deployment Guide](./deployment_guide.md)
+- [User-Specific Implementation Summary](./user_specific_implementation_summary.md)
+- [Creating New Agents](./creating_new_agents.md)
+
+---
+
+**For more details, see the code in `src/utils/google_calendar_service.py`, the test scripts, and the related guides above.**
 
 ## Architecture
 
@@ -39,6 +119,7 @@ The Google OAuth integration allows users to securely authenticate with their Go
 1. Go to "APIs & Services" > "Credentials"
 2. Click "Create Credentials" > "OAuth 2.0 Client IDs"
 3. Configure OAuth consent screen:
+
    - User Type: External (or Internal for Google Workspace)
    - App name: "Remo AI Assistant"
    - User support email: Your email
@@ -77,11 +158,13 @@ google-api-python-client==2.126.0
 ### Authentication Endpoints
 
 #### 1. Initiate OAuth Login
+
 ```http
 GET /auth/google/login
 ```
 
 **Response:**
+
 ```json
 {
   "authorization_url": "https://accounts.google.com/o/oauth2/auth?...",
@@ -91,11 +174,13 @@ GET /auth/google/login
 ```
 
 #### 2. OAuth Callback
+
 ```http
 GET /auth/google/callback?code={authorization_code}&state={state}&user_id={user_id}
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -106,11 +191,13 @@ GET /auth/google/callback?code={authorization_code}&state={state}&user_id={user_
 ```
 
 #### 3. Check Authentication Status
+
 ```http
 GET /auth/status/{user_id}
 ```
 
 **Response:**
+
 ```json
 {
   "user_id": "user123",
@@ -121,11 +208,13 @@ GET /auth/status/{user_id}
 ```
 
 #### 4. Logout
+
 ```http
 DELETE /auth/logout/{user_id}
 ```
 
 **Response:**
+
 ```json
 {
   "user_id": "user123",
@@ -137,16 +226,19 @@ DELETE /auth/logout/{user_id}
 ### Email Management Endpoints
 
 #### 1. Read Emails
+
 ```http
 GET /emails/read?user_id={user_id}&max_results={count}&query={gmail_query}
 ```
 
 **Parameters:**
+
 - `user_id`: User identifier
 - `max_results`: Maximum number of emails to return (default: 10)
 - `query`: Gmail search query (default: "in:inbox")
 
 **Response:**
+
 ```json
 {
   "user_id": "user123",
@@ -168,11 +260,13 @@ GET /emails/read?user_id={user_id}&max_results={count}&query={gmail_query}
 ```
 
 #### 2. Search Emails
+
 ```http
 GET /emails/search?user_id={user_id}&query={search_query}&max_results={count}
 ```
 
 **Parameters:**
+
 - `user_id`: User identifier
 - `query`: Gmail search query (required)
 - `max_results`: Maximum number of emails to return (default: 10)
@@ -180,6 +274,7 @@ GET /emails/search?user_id={user_id}&query={search_query}&max_results={count}
 ## Gmail Query Examples
 
 ### Basic Queries
+
 - `in:inbox` - All inbox emails
 - `is:unread` - Unread emails
 - `is:read` - Read emails
@@ -188,6 +283,7 @@ GET /emails/search?user_id={user_id}&query={search_query}&max_results={count}
 - `subject:meeting` - Emails with "meeting" in subject
 
 ### Advanced Queries
+
 - `in:inbox is:unread` - Unread inbox emails
 - `from:boss@company.com is:unread` - Unread emails from boss
 - `subject:urgent` - Emails with "urgent" in subject
@@ -196,6 +292,7 @@ GET /emails/search?user_id={user_id}&query={search_query}&max_results={count}
 - `newer_than:7d` - Emails from last 7 days
 
 ### Label Queries
+
 - `label:work` - Emails with "work" label
 - `label:important` - Emails with "important" label
 - `-label:spam` - Exclude spam label
@@ -302,6 +399,7 @@ response = email_agent.process_email_request(
 ### Common Errors
 
 1. **401 Unauthorized**: User not authenticated
+
    ```json
    {
      "detail": "User not authenticated with Gmail. Please complete OAuth flow first."
@@ -309,6 +407,7 @@ response = email_agent.process_email_request(
    ```
 
 2. **400 Bad Request**: Invalid Gmail API request
+
    ```json
    {
      "detail": "Gmail API error: Invalid query"
@@ -325,11 +424,13 @@ response = email_agent.process_email_request(
 ### Troubleshooting
 
 1. **OAuth Flow Fails**:
+
    - Check Google Cloud Console credentials
    - Verify redirect URI matches exactly
    - Ensure Gmail API is enabled
 
 2. **Email Reading Fails**:
+
    - Verify user has completed OAuth flow
    - Check Gmail API quotas
    - Ensure proper scopes are granted
@@ -341,11 +442,13 @@ response = email_agent.process_email_request(
 ## Security Best Practices
 
 ### Development
+
 - Use environment variables for sensitive data
 - Implement proper error handling
 - Log authentication events
 
 ### Production
+
 - Use encrypted database for credential storage
 - Implement session management
 - Add rate limiting
@@ -362,6 +465,7 @@ python test_google_oauth.py
 ```
 
 The test script will:
+
 1. Test the complete OAuth flow
 2. Verify email reading functionality
 3. Test authentication management
@@ -382,4 +486,4 @@ The test script will:
 - [Gmail API Documentation](https://developers.google.com/gmail/api)
 - [Google OAuth 2.0 Guide](https://developers.google.com/identity/protocols/oauth2)
 - [Gmail API Python Client](https://github.com/googleapis/google-api-python-client)
-- [Gmail Search Operators](https://support.google.com/mail/answer/7190?hl=en) 
+- [Gmail Search Operators](https://support.google.com/mail/answer/7190?hl=en)
