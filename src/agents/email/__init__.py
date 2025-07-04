@@ -30,7 +30,7 @@ __all__ = [
     
     # Email tools
     'compose_email',
-    'send_email',
+    'send_email', 
     'schedule_email',
     'search_emails',
     'mark_email_read',

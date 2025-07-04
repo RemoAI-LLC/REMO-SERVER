@@ -410,10 +410,10 @@ def schedule_meeting(
     if not user_id:
         return "❌ User ID is required to schedule meetings"
     
-    if not attendees:
-        return "❌ At least one attendee is required"
+        if not attendees:
+            return "❌ At least one attendee is required"
     
-    try:
+        try:
         # Validate date and time format
         try:
             datetime.strptime(date, "%Y-%m-%d")
@@ -438,7 +438,7 @@ def schedule_meeting(
         
         # Save meeting to DynamoDB
         if dynamodb_service.save_meeting(user_id, meeting_data):
-            attendees_str = ", ".join(attendees)
+        attendees_str = ", ".join(attendees)
             result = f"✅ Meeting scheduled successfully!\n\n"
             result += f"📅 Subject: {subject}\n"
             result += f"📅 Date: {date} at {time}\n"
