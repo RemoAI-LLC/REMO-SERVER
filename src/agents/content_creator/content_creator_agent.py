@@ -1,6 +1,7 @@
 from .content_creator_tools import get_bedrock_client, generate_nova_canvas_image, generate_nova_reel_video
 import time
 import requests
+from langsmith import traceable
 
 class ContentCreatorAgent:
     """
@@ -14,7 +15,7 @@ class ContentCreatorAgent:
         if request_type == 'image':
             return self.generate_image(prompt)
         elif request_type == 'video':
-            return self.generate_video(prompt, duration=kwargs.get('duration', 4))
+            return "Hi there! I wish I could generate videos for you, but I don't have that ability just yet. However, I can create amazing images! If you'd like an image instead, just let me know what you'd like to see."
         else:
             raise ValueError(f"Unknown request type: {request_type}")
 
@@ -35,34 +36,22 @@ class ContentCreatorAgent:
         if request_type == 'image':
             yield from self.stream_generate_image(prompt)
         elif request_type == 'video':
-            yield from self.stream_generate_video(prompt, duration=kwargs.get('duration', 4))
+            yield "Hi there! I wish I could generate videos for you, but I don't have that ability just yet. However, I can create amazing images! If you'd like an image instead, just let me know what you'd like to see."
         else:
             yield {"error": f"Unknown request type: {request_type}"}
 
+    @traceable
     def generate_image(self, prompt: str):
         try:
             return generate_nova_canvas_image(prompt)
         except Exception as e:
             return {"error": str(e)}
 
+    @traceable
     def stream_generate_image(self, prompt: str):
         yield {"progress": "Generating your image. This may take a few moments..."}
         try:
             result = generate_nova_canvas_image(prompt)
-            yield {"result": result}
-        except Exception as e:
-            yield {"error": str(e)}
-
-    def generate_video(self, prompt: str, duration: int = 4):
-        try:
-            return generate_nova_reel_video(prompt, duration)
-        except Exception as e:
-            return {"error": str(e)}
-
-    def stream_generate_video(self, prompt: str, duration: int = 4):
-        yield {"progress": "Generating your video. This may take up to 2 minutes. Please wait..."}
-        try:
-            result = generate_nova_reel_video(prompt, duration)
             yield {"result": result}
         except Exception as e:
             yield {"error": str(e)}

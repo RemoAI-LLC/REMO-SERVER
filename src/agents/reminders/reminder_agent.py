@@ -21,6 +21,7 @@ from .reminder_tools import (
     mark_reminder_complete
 )
 from typing import List, Dict
+from langsmith import traceable
 
 class ReminderAgent:
     """
@@ -137,28 +138,27 @@ Remember: You're part of a larger AI assistant system, so be collaborative and r
     
     def _create_user_specific_tools(self):
         """Create tool wrappers that automatically include the user_id"""
-        
-        @tool
+        @traceable
         def set_reminder_wrapper(title: str, datetime_str: str, description: str = "") -> str:
             """Set a new reminder with title, datetime, and optional description."""
             return set_reminder(title, datetime_str, description, self.user_id)
         
-        @tool
+        @traceable
         def list_reminders_wrapper(show_completed: bool = False) -> str:
             """List all reminders, optionally including completed ones."""
             return list_reminders(show_completed, self.user_id)
         
-        @tool
+        @traceable
         def update_reminder_wrapper(reminder_id: str, title: str = None, datetime_str: str = None, description: str = None) -> str:
             """Update an existing reminder's details."""
             return update_reminder(reminder_id, title, datetime_str, description, self.user_id)
         
-        @tool
+        @traceable
         def delete_reminder_wrapper(reminder_id: str) -> str:
             """Delete a reminder by ID."""
             return delete_reminder(reminder_id, self.user_id)
         
-        @tool
+        @traceable
         def mark_reminder_complete_wrapper(reminder_id: str) -> str:
             """Mark a reminder as completed."""
             return mark_reminder_complete(reminder_id, self.user_id)

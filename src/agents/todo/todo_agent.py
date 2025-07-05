@@ -22,6 +22,7 @@ from .todo_tools import (
     prioritize_todos
 )
 from typing import List, Dict
+from langsmith import traceable
 
 class TodoAgent:
     """
@@ -110,33 +111,32 @@ class TodoAgent:
     
     def _create_user_specific_tools(self):
         """Create tool wrappers that automatically include the user_id"""
-        
-        @tool
+        @traceable
         def add_todo_wrapper(task: str, priority: str = "medium", category: str = "general", due_date: str = None) -> str:
             """Add a new todo item to the user's todo list. Use this when the user wants to create a new task or todo item."""
             return add_todo(task, priority, category, due_date, self.user_id)
         
-        @tool
+        @traceable
         def list_todos_wrapper(show_completed: bool = False, category: str = None) -> str:
             """List all todos from the user's todo list. Use this when the user asks to see their todos or todo list."""
             return list_todos(show_completed, category, self.user_id)
         
-        @tool
+        @traceable
         def mark_todo_complete_wrapper(todo_id: str) -> str:
             """Mark a todo item as completed. Use this when the user wants to mark a task as done."""
             return mark_todo_complete(todo_id, self.user_id)
         
-        @tool
-        def update_todo_wrapper(todo_id: str, task: str = None, priority: str = None, category: str = None, due_date: str = None) -> str:
+        @traceable
+        def update_todo_wrapper(todo_id: str = None, task: str = None, priority: str = None, category: str = None, due_date: str = None) -> str:
             """Update an existing todo item's details. Use this when the user wants to modify a task."""
             return update_todo(todo_id, task, priority, category, due_date, self.user_id)
         
-        @tool
+        @traceable
         def delete_todo_wrapper(todo_id: str) -> str:
             """Delete a todo item by ID. Use this when the user wants to remove a task."""
             return delete_todo(todo_id, self.user_id)
         
-        @tool
+        @traceable
         def prioritize_todos_wrapper() -> str:
             """Prioritize and organize todos by importance and urgency. Use this when the user wants to see organized todos."""
             return prioritize_todos(self.user_id)

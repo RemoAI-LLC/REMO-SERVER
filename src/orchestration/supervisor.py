@@ -19,6 +19,7 @@ try:
 except ImportError:
     ChatBedrock = None
 import boto3
+from langsmith import traceable
 
 class SupervisorOrchestrator:
     """
@@ -127,6 +128,7 @@ class SupervisorOrchestrator:
         
         return supervisor.compile()
     
+    @traceable
     def process_request(self, user_input: str, conversation_history: List[Dict] = None) -> str:
         """
         Process a user request through the multi-agent system.
@@ -211,6 +213,7 @@ class SupervisorOrchestrator:
         except Exception as e:
             return f"I encountered an error while processing your request: {str(e)}. Please try again."
     
+    @traceable
     def stream_response(self, user_input: str, conversation_history: List[Dict] = None):
         """
         Stream the response from the multi-agent system.

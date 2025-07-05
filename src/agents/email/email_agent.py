@@ -22,6 +22,7 @@ try:
 except ImportError:
     ChatBedrock = None
 import re
+from langsmith import traceable
 
 # Add the parent directory to the path to import required modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -96,15 +97,15 @@ Remember: You are here to make email management easier and more efficient for th
     def _get_tools(self) -> Dict[str, Any]:
         """Get the available email tools with user_id binding."""
         return {
-            "compose_email": lambda **kwargs: compose_email(**kwargs, user_id=self.user_id),
-            "send_email": lambda **kwargs: send_email(**kwargs, user_id=self.user_id),
-            "schedule_email": lambda **kwargs: schedule_email(**kwargs, user_id=self.user_id),
-            "search_emails": lambda **kwargs: search_emails(**kwargs, user_id=self.user_id),
-            "mark_email_read": lambda **kwargs: mark_email_read(**kwargs, user_id=self.user_id),
-            "archive_email": lambda **kwargs: archive_email(**kwargs, user_id=self.user_id),
-            "forward_email": lambda **kwargs: forward_email(**kwargs, user_id=self.user_id),
-            "reply_to_email": lambda **kwargs: reply_to_email(**kwargs, user_id=self.user_id),
-            "get_email_summary": lambda **kwargs: get_email_summary(**kwargs, user_id=self.user_id)
+            "compose_email": traceable(lambda **kwargs: compose_email(**kwargs, user_id=self.user_id)),
+            "send_email": traceable(lambda **kwargs: send_email(**kwargs, user_id=self.user_id)),
+            "schedule_email": traceable(lambda **kwargs: schedule_email(**kwargs, user_id=self.user_id)),
+            "search_emails": traceable(lambda **kwargs: search_emails(**kwargs, user_id=self.user_id)),
+            "mark_email_read": traceable(lambda **kwargs: mark_email_read(**kwargs, user_id=self.user_id)),
+            "archive_email": traceable(lambda **kwargs: archive_email(**kwargs, user_id=self.user_id)),
+            "forward_email": traceable(lambda **kwargs: forward_email(**kwargs, user_id=self.user_id)),
+            "reply_to_email": traceable(lambda **kwargs: reply_to_email(**kwargs, user_id=self.user_id)),
+            "get_email_summary": traceable(lambda **kwargs: get_email_summary(**kwargs, user_id=self.user_id)),
         }
 
     def process(self, user_message: str, conversation_history: List[Dict] = None) -> str:
