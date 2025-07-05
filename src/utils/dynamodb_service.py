@@ -968,13 +968,22 @@ class DynamoDBService:
             print(f"[DynamoDBService] [save_conversation_context] Table not initialized for user_id={user_id}")
             return False
         try:
+            # Clean, compact log for conversation context
+            summary = {
+                'user_id': user_id,
+                'current_state': context_data.get('current_state'),
+                'active_agent': context_data.get('active_agent'),
+                'conversation_topic': context_data.get('conversation_topic'),
+                'last_user_intent': context_data.get('last_user_intent'),
+                'keywords': context_data.get('context_keywords'),
+                'history_len': len(context_data.get('agent_interaction_history', [])),
+            }
             item = {
                 'user_id': user_id,
                 'conversation_context': context_data,
                 'updated_at': datetime.now().isoformat(),
                 'ttl': int(datetime.now().timestamp()) + (30 * 24 * 60 * 60)  # 30 days TTL
             }
-            print(f"[DynamoDBService] [save_conversation_context] user_id={user_id} context_data={context_data}")
             self.conversation_context_table.put_item(Item=item)
             return True
         except Exception as e:
@@ -991,9 +1000,7 @@ class DynamoDBService:
         try:
             response = self.conversation_context_table.get_item(Key={'user_id': user_id})
             if 'Item' in response:
-                print(f"[DynamoDBService] [load_conversation_context] user_id={user_id} context={response['Item'].get('conversation_context')}")
                 return response['Item'].get('conversation_context')
-            print(f"[DynamoDBService] [load_conversation_context] user_id={user_id} context=None")
             return None
         except Exception as e:
             print(f"[DynamoDBService] Error loading conversation context for user_id={user_id}: {e}")
@@ -1371,4 +1378,6 @@ class DynamoDBService:
             return None
         except Exception as e:
             print(f"Error retrieving Google credentials: {e}")
-            return None 
+            return None
+
+dynamodb_service_singleton = DynamoDBService() 

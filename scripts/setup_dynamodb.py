@@ -19,7 +19,7 @@ except ImportError:
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from src.utils.dynamodb_service import DynamoDBService
+from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 
 def print_header():
     """Print setup script header."""
@@ -58,7 +58,7 @@ def test_dynamodb_connection():
     print("\n🔗 Testing DynamoDB connection...")
     
     try:
-        dynamodb_service = DynamoDBService()
+        dynamodb_service = dynamodb_service
         
         if not dynamodb_service.dynamodb:
             print("❌ Failed to initialize DynamoDB service")

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import asdict
 
-from src.utils.dynamodb_service import DynamoDBService
+from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 from .feedback_collector import FeedbackItem, FeedbackType, FeedbackRating
 from .agent_improver import ImprovementAction, ImprovementResult
 
@@ -22,7 +22,7 @@ class FeedbackDatabase:
     
     def __init__(self):
         """Initialize the feedback database."""
-        self.db = DynamoDBService()
+        self.db = dynamodb_service
         self.table_name = "remo-feedback"
         self.ensure_table_exists()
     

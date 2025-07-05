@@ -17,10 +17,7 @@ import uuid
 
 # Add the parent directory to the path to import DynamoDB service
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.dynamodb_service import DynamoDBService
-
-# Initialize DynamoDB service
-dynamodb_service = DynamoDBService()
+from utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 
 def compose_email(
     to_recipients: List[str],

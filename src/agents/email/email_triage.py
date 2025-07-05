@@ -19,6 +19,7 @@ import re
 # Add the parent directory to the path to import required modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from utils.dynamodb_service import DynamoDBService
+from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 
 class EmailTriage:
     """
@@ -36,7 +37,7 @@ class EmailTriage:
             user_id: User ID for user-specific triage rules
         """
         self.user_id = user_id
-        self.dynamodb_service = DynamoDBService()
+        self.dynamodb_service = dynamodb_service
         
         # Priority keywords and patterns
         self.priority_keywords = {

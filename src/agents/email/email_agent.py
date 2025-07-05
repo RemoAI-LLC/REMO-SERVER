@@ -15,10 +15,16 @@ import sys
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import json
+import boto3
+from langgraph.prebuilt import create_react_agent
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:
+    ChatBedrock = None
 
 # Add the parent directory to the path to import required modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.dynamodb_service import DynamoDBService
+from utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 from .email_tools import (
     compose_email,
     send_email,
@@ -48,7 +54,7 @@ class EmailAgent:
         """
         self.name = "email_agent"  # Add name attribute for supervisor
         self.user_id = user_id
-        self.dynamodb_service = DynamoDBService()
+        self.dynamodb_service = dynamodb_service
         self.persona = self._get_persona()
         self.tools = self._get_tools()
         
@@ -343,19 +349,119 @@ Just tell me what you'd like to do with your emails!"""
     
     def get_agent(self):
         """
-        Get the agent for use with LangGraph supervisor.
-        
+        Get the compiled agent for use with LangGraph supervisor.
         Returns:
-            Agent configuration for supervisor
+            Compiled agent object
         """
-        # For now, return a simple agent configuration
-        # In a full implementation, this would create a proper LangGraph agent
-        return {
-            "name": "email_agent",
-            "description": "Email management and composition",
-            "tools": list(self.tools.keys()),
-            "process": self.process
-        }
+        # Bedrock LLM initialization (reuse if already set)
+        model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+        region = os.getenv("AWS_REGION", "us-east-1")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        temperature = 0.3
+        if ChatBedrock:
+            llm = ChatBedrock(
+                model_id=model_id,
+                region_name=region,
+                model_kwargs={"temperature": temperature}
+            )
+        else:
+            class BedrockLLM:
+                def __init__(self, model_id, region, access_key, secret_key, temperature):
+                    self.model_id = model_id
+                    self.temperature = temperature
+                    self.client = boto3.client(
+                        "bedrock-runtime",
+                        region_name=region,
+                        aws_access_key_id=access_key,
+                        aws_secret_access_key=secret_key,
+                    )
+                def invoke(self, messages):
+                    for m in messages:
+                        if isinstance(m.get("content"), str):
+                            m["content"] = [{"text": m["content"]}]
+                        elif isinstance(m.get("content"), list):
+                            m["content"] = [c if isinstance(c, dict) else {"text": c} for c in m["content"]]
+                    body = {"messages": messages}
+                    response = self.client.invoke_model(
+                        modelId=self.model_id,
+                        body=json.dumps(body),
+                        contentType="application/json",
+                        accept="application/json"
+                    )
+                    result = json.loads(response["body"].read())
+                    class Result:
+                        def __init__(self, content):
+                            self.content = content
+                    return Result(result.get("completion") or result.get("output", ""))
+            llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
+
+        # Define tool functions with docstrings
+        from langchain.tools import tool
+        user_id = self.user_id
+
+        @tool
+        def compose_email_tool(**kwargs):
+            """Compose an email with recipients, subject, body, and optional CC/BCC/attachments."""
+            return compose_email(**kwargs, user_id=user_id)
+
+        @tool
+        def send_email_tool(**kwargs):
+            """Send an email by email ID or send a composed draft."""
+            return send_email(**kwargs, user_id=user_id)
+
+        @tool
+        def schedule_email_tool(**kwargs):
+            """Schedule an email to be sent at a later date/time."""
+            return schedule_email(**kwargs, user_id=user_id)
+
+        @tool
+        def search_emails_tool(**kwargs):
+            """Search emails by sender, subject, content, or date range."""
+            return search_emails(**kwargs, user_id=user_id)
+
+        @tool
+        def mark_email_read_tool(**kwargs):
+            """Mark an email as read by email ID."""
+            return mark_email_read(**kwargs, user_id=user_id)
+
+        @tool
+        def archive_email_tool(**kwargs):
+            """Archive an email by email ID."""
+            return archive_email(**kwargs, user_id=user_id)
+
+        @tool
+        def forward_email_tool(**kwargs):
+            """Forward an email to new recipients with optional message."""
+            return forward_email(**kwargs, user_id=user_id)
+
+        @tool
+        def reply_to_email_tool(**kwargs):
+            """Reply to an email with a message."""
+            return reply_to_email(**kwargs, user_id=user_id)
+
+        @tool
+        def get_email_summary_tool(**kwargs):
+            """Get a summary of recent emails (e.g., last 7 days)."""
+            return get_email_summary(**kwargs, user_id=user_id)
+
+        # Compile the agent using create_react_agent
+        return create_react_agent(
+            model=llm,
+            tools=[
+                compose_email_tool,
+                send_email_tool,
+                schedule_email_tool,
+                search_emails_tool,
+                mark_email_read_tool,
+                archive_email_tool,
+                forward_email_tool,
+                reply_to_email_tool,
+                get_email_summary_tool
+            ],
+            prompt=self.persona,
+            name="email_agent"
+        )
     
     def get_description(self) -> str:
         """

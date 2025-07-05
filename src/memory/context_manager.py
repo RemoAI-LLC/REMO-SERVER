@@ -83,9 +83,9 @@ class ConversationContextManager:
         self.last_activity = None
         
         # Initialize DynamoDB service if available and user_id provided
-        self.dynamodb_service = None
+        from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
+        self.dynamodb_service = dynamodb_service
         if DYNAMODB_AVAILABLE and user_id:
-            self.dynamodb_service = DynamoDBService()
             self._load_user_context()
     
     def _load_user_context(self):

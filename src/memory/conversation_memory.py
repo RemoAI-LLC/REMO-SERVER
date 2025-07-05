@@ -20,6 +20,8 @@ try:
 except ImportError:
     DYNAMODB_AVAILABLE = False
 
+from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
+
 class ConversationMemoryManager:
     """
     Manages conversation memory for the Remo multi-agent system.
@@ -44,9 +46,7 @@ class ConversationMemoryManager:
         self.last_activity = None
         
         # Initialize DynamoDB service if available and user_id provided
-        self.dynamodb_service = None
-        if DYNAMODB_AVAILABLE and user_id:
-            self.dynamodb_service = DynamoDBService()
+        self.dynamodb_service = dynamodb_service
         
         # Initialize memory based on type
         self._initialize_memory()
@@ -71,7 +71,7 @@ class ConversationMemoryManager:
         """Set the user ID and initialize DynamoDB service if available."""
         self.user_id = user_id
         if DYNAMODB_AVAILABLE and user_id:
-            self.dynamodb_service = DynamoDBService()
+            self.dynamodb_service = dynamodb_service
     
     def start_conversation(self, conversation_id: str = None) -> str:
         """

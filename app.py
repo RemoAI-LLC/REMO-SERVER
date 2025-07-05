@@ -27,7 +27,7 @@ from langchain.schema import AIMessage
 
 from src.orchestration import SupervisorOrchestrator
 from src.memory import ConversationMemoryManager, ConversationContextManager, MemoryUtils
-from src.utils.dynamodb_service import DynamoDBService
+from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 from src.feedback import (
     FeedbackCollector, FeedbackAnalyzer, AgentImprover, FeedbackDatabase,
     FeedbackType, FeedbackRating
@@ -40,9 +40,6 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
 
 graph_builder = StateGraph(State)
-
-# Initialize DynamoDB service
-dynamodb_service = DynamoDBService()
 
 # Global managers (for backward compatibility)
 supervisor_orchestrator = SupervisorOrchestrator()
@@ -149,170 +146,27 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
     memory_manager.add_message("user", user_message)
     context_manager.update_activity()
     
-    # Analyze the message for intent
-    is_reminder_intent, reminder_details = MemoryUtils.detect_reminder_intent(user_message)
-    is_todo_intent, todo_details = MemoryUtils.detect_todo_intent(user_message)
-    is_email_intent, email_details = MemoryUtils.detect_email_intent(user_message)
-    
-    # Check for context-aware routing
-    available_agents = ["reminder_agent", "todo_agent", "email_agent"]
-    context_agent = context_manager.should_route_to_agent(user_message, available_agents)
-    
-    # Determine if we should route to specialized agents
-    should_route_to_specialized = False
-    target_agent = None
-    
-    # Check for explicit specialized keywords
-    specialized_keywords = [
-        "reminder", "remind", "alert", "schedule", "appointment", "alarm", "wake up", "meeting",
-        "set", "create", "add reminder", "set reminder", "set alarm", "set appointment",
-        "todo", "task", "project", "organize", "prioritize", "complete", "add to", "add todo",
-        "to do", "to-do", "checklist", "list", "add task", "create task", "mark complete",
-        "finish", "done", "complete task", "todo list", "task list",
-        "email", "mail", "compose", "send", "draft", "inbox", "outbox", "reply", "forward",
-        "archive", "search emails", "email summary", "schedule email", "mark read"
-    ]
-    has_explicit_specialized_keywords = any(keyword in user_message.lower() for keyword in specialized_keywords)
-    
-    # Priority order: Intent detection > Context routing > General response
-    # If we have a clear intent, prioritize it over context routing
-    if is_todo_intent and todo_details.get("action") == "list_todos":
-        # Directly call the todo agent's list_todos method
-        try:
-            agent_response = supervisor_orchestrator.todo_agent.list_todos()
-            memory_manager.add_message("assistant", agent_response)
-            context_manager.add_agent_interaction(
-                agent_name="todo_agent",
-                action="list_todos",
-                result="success",
-                metadata={"user_message": user_message, "response": agent_response}
-            )
-            return agent_response
-        except Exception as e:
-            return f"I encountered an error while listing your todos: {str(e)}. Please try again."
-    elif is_reminder_intent and reminder_details.get("action") == "list_reminders":
-        # Directly call the reminder agent's list_reminders method
-        try:
-            agent_response = supervisor_orchestrator.reminder_agent.list_reminders()
-            memory_manager.add_message("assistant", agent_response)
-            context_manager.add_agent_interaction(
-                agent_name="reminder_agent",
-                action="list_reminders",
-                result="success",
-                metadata={"user_message": user_message, "response": agent_response}
-            )
-            return agent_response
-        except Exception as e:
-            return f"I encountered an error while listing your reminders: {str(e)}. Please try again."
-    elif is_todo_intent:
-        should_route_to_specialized = True
-        target_agent = "todo_agent"
-        context_manager.set_conversation_topic("todo")
-        context_manager.set_user_intent("add_todo")
-        context_manager.set_active_agent("todo_agent")  # Set active agent for context continuity
-        context_keywords = MemoryUtils.get_context_keywords_for_intent("todo", todo_details)
-        context_manager.add_context_keywords(context_keywords)
-        if not todo_details.get("has_task"):
-            context_manager.add_pending_request(
-                request_type="add_todo",
-                agent_name="todo_agent",
-                required_info=["task"],
-                context={"priority": todo_details.get("priority", "medium")}
-            )
-    elif is_reminder_intent:
-        should_route_to_specialized = True
-        target_agent = "reminder_agent"
-        context_manager.set_conversation_topic("reminder")
-        context_manager.set_user_intent("set_reminder")
-        context_manager.set_active_agent("reminder_agent")  # Set active agent for context continuity
-        context_keywords = MemoryUtils.get_context_keywords_for_intent("reminder", reminder_details)
-        context_manager.add_context_keywords(context_keywords)
-        if not reminder_details.get("has_time"):
-            context_manager.add_pending_request(
-                request_type="set_reminder",
-                agent_name="reminder_agent",
-                required_info=["time"],
-                context={"description": reminder_details.get("description", "")}
-            )
-    elif is_email_intent:
-        should_route_to_specialized = True
-        target_agent = "email_agent"
-        context_manager.set_conversation_topic("email")
-        context_manager.set_user_intent("email_management")
-        context_manager.set_active_agent("email_agent")  # Set active agent for context continuity
-        context_keywords = MemoryUtils.get_context_keywords_for_intent("email", email_details)
-        context_manager.add_context_keywords(context_keywords)
-        if not email_details.get("has_recipients") and email_details.get("action") == "compose":
-            context_manager.add_pending_request(
-                request_type="compose_email",
-                agent_name="email_agent",
-                required_info=["recipients", "subject", "body"],
-                context={"action": email_details.get("action")}
-            )
-    elif context_agent:
-        # Only use context routing if no clear intent is detected
-        should_route_to_specialized = True
-        target_agent = context_agent
-        context_manager.set_active_agent(context_agent)  # Set active agent for context continuity
-    
-    if should_route_to_specialized and target_agent:
-        try:
-            # Get conversation history for context
-            recent_messages = memory_manager.get_recent_messages(5)
-            conversation_history_for_agent = []
-            for msg in recent_messages:
-                conversation_history_for_agent.append({
-                    "role": "user" if hasattr(msg, 'type') and msg.type == "human" else "assistant",
-                    "content": msg.content
-                })
-            
-            # Call the agent directly instead of going through supervisor
-            if target_agent == "reminder_agent":
-                agent_response = supervisor_orchestrator.reminder_agent.process(user_message, conversation_history_for_agent)
-            elif target_agent == "todo_agent":
-                agent_response = supervisor_orchestrator.todo_agent.process(user_message, conversation_history_for_agent)
-            elif target_agent == "email_agent":
-                agent_response = supervisor_orchestrator.email_agent.process(user_message, conversation_history_for_agent)
-            else:
-                # Fallback to supervisor for other agents
-                agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)
-            
-            memory_manager.add_message("assistant", agent_response)
-            context_manager.add_agent_interaction(
-                agent_name=target_agent,
-                action="process_request",
-                result="success",
-                metadata={"user_message": user_message, "response": agent_response}
-            )
-            if context_manager.get_pending_request(target_agent):
-                context_manager.resolve_pending_request(target_agent)
-            return agent_response
-        except Exception as e:
-            fallback_response = llm.invoke([{"role": "user", "content": user_message}])
-            memory_manager.add_message("assistant", fallback_response.content)
-            return fallback_response.content
-    else:
-        conversation_context = context_manager.get_conversation_context()
-        recent_messages = memory_manager.get_recent_messages(3)
-        enhanced_prompt = REMO_SYSTEM_PROMPT
-        
-        if conversation_context.get("conversation_topic"):
-            enhanced_prompt += f"\n\nCurrent conversation topic: {conversation_context['conversation_topic']}"
-        if conversation_context.get("pending_requests_count", 0) > 0:
-            enhanced_prompt += f"\n\nNote: There are {conversation_context['pending_requests_count']} pending requests that may need completion."
-        if recent_messages:
-            enhanced_prompt += "\n\nRecent conversation context:"
-            for msg in recent_messages[-2:]:
-                role = "User" if hasattr(msg, 'type') and msg.type == "human" else "Assistant"
-                enhanced_prompt += f"\n{role}: {msg.content[:100]}..."
-        
-        messages_with_context = [
-            {"role": "system", "content": enhanced_prompt},
-            {"role": "user", "content": user_message}
-        ]
-        response = llm.invoke(messages_with_context)
-        memory_manager.add_message("assistant", response.content)
-        return response.content
+    # Always route through supervisor orchestrator
+    try:
+        # Get recent messages for context
+        recent_messages = memory_manager.get_recent_messages(5)
+        conversation_history_for_agent = []
+        for msg in recent_messages:
+            conversation_history_for_agent.append({
+                "role": "user" if hasattr(msg, 'type') and msg.type == "human" else "assistant",
+                "content": msg.content
+            })
+        agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)
+        memory_manager.add_message("assistant", agent_response)
+        context_manager.add_agent_interaction(
+            agent_name="supervisor_orchestrator",
+            action="process_request",
+            result="success",
+            metadata={"user_message": user_message, "response": agent_response}
+        )
+        return agent_response
+    except Exception as e:
+        return f"I encountered an error while processing your request: {str(e)}. Please try again."
 
 # --- FastAPI API ---
 app = FastAPI(
@@ -398,6 +252,7 @@ async def root():
 @app.post("/chat")
 async def chat(request: ChatRequest):
     print("[DEBUG] /chat endpoint called with:", repr(request.message))
+    import re
     try:
         # Warmup ping detection
         if request.message == "__warmup__":
@@ -414,9 +269,21 @@ async def chat(request: ChatRequest):
         # If response is blank, return a helpful error message
         if not response or not response.strip():
             response = "Sorry, I couldn't generate a response. Please try again or check the backend logs."
-        print("[DEBUG] Returning response to frontend:", repr(response))
+        # Split reasoning and main message
+        match = re.match(r"<thinking>(.*?)</thinking>\s*(.*)", response, re.DOTALL)
+        if match:
+            reasoning = match.group(1).strip()
+            main_message = match.group(2).strip()
+        else:
+            reasoning = ""
+            main_message = response.strip()
+        # Neatly log both
+        if reasoning:
+            print(f"[REASONING] {reasoning}")
+        print(f"[RESPONSE] {main_message}")
+        # Return only main_message to frontend
         return ChatResponse(
-            response=response,
+            response=main_message,
             success=True,
             timestamp=datetime.now().isoformat(),
             user_id=request.user_id
@@ -501,7 +368,7 @@ def aws_health_check():
     bedrock_error = None
     # DynamoDB check
     try:
-        db = DynamoDBService()
+        db = dynamodb_service
         if db.dynamodb and db.reminders_table and db.todos_table and db.users_table and db.conversation_table:
             dynamodb_status = "ok"
         else:
@@ -569,7 +436,7 @@ async def submit_feedback(request: FeedbackRequest, user_id: str = "default_user
         )
         
         # Save to database
-        db = FeedbackDatabase()
+        db = dynamodb_service
         db.save_feedback_item(feedback_item)
         
         return FeedbackResponse(
@@ -587,7 +454,7 @@ async def get_feedback_summary(user_id: str):
     """Get feedback summary for a user."""
     try:
         # Get feedback from database
-        db = FeedbackDatabase()
+        db = dynamodb_service
         feedback_items = db.get_user_feedback(user_id, limit=1000)
         
         if not feedback_items:
@@ -623,7 +490,7 @@ async def generate_improvements(user_id: str):
     """Generate improvement actions based on user feedback."""
     try:
         # Get user feedback
-        db = FeedbackDatabase()
+        db = dynamodb_service
         feedback_items = db.get_user_feedback(user_id, limit=1000)
         
         if not feedback_items:
@@ -663,7 +530,7 @@ async def implement_improvement(action_id: str, user_id: str = "default_user"):
     """Implement a specific improvement action."""
     try:
         # Get the action from database
-        db = FeedbackDatabase()
+        db = dynamodb_service
         actions = db.get_improvement_actions(user_id=user_id)
         
         target_action = None
@@ -697,7 +564,7 @@ async def implement_improvement(action_id: str, user_id: str = "default_user"):
 async def get_improvement_actions(user_id: str, status: Optional[str] = None):
     """Get improvement actions for a user."""
     try:
-        db = FeedbackDatabase()
+        db = dynamodb_service
         actions = db.get_improvement_actions(user_id=user_id, status=status)
         
         action_responses = []
@@ -725,7 +592,7 @@ async def export_feedback(user_id: str, format: str = "json"):
     """Export user feedback data."""
     try:
         # Get user feedback
-        db = FeedbackDatabase()
+        db = dynamodb_service
         feedback_items = db.get_user_feedback(user_id, limit=10000)
         
         if not feedback_items:

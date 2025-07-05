@@ -12,10 +12,7 @@ import sys
 
 # Add the parent directory to the path to import DynamoDB service
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.dynamodb_service import DynamoDBService
-
-# Initialize DynamoDB service
-dynamodb_service = DynamoDBService()
+from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 
 def add_todo(task: str, priority: str = "medium", category: str = "general", due_date: str = None, user_id: str = None) -> str:
     """
