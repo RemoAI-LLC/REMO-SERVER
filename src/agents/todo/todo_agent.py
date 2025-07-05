@@ -185,10 +185,18 @@ class TodoAgent:
             The agent's response as a string
         """
         try:
-            # Create messages for the agent
+            print(f"[TodoAgent] process called with user_message: {user_message}")
+            # If the message is an add todo intent, call add_todo directly and return a final message
+            add_keywords = ["add todo", "add to do", "add task", "create todo", "new todo", "add", "create"]
+            if any(kw in user_message.lower() for kw in add_keywords):
+                # Naive extraction: use the whole message as the task
+                task = user_message
+                result = self.tools[0](task=task)  # add_todo_wrapper is the first tool
+                print(f"[TodoAgent] add_todo tool result: {result}")
+                # Always return a final, explicit confirmation
+                return f"✅ Todo added! {result}\nIf you want to add another, just tell me the task. To see your todos, say 'list my todos'."
+            # Otherwise, use the normal agent invoke flow
             messages = []
-            
-            # Add conversation history if provided
             if conversation_history:
                 for msg in conversation_history:
                     if isinstance(msg.get("content"), str):
@@ -196,22 +204,22 @@ class TodoAgent:
                     elif isinstance(msg.get("content"), list):
                         msg["content"] = [c if isinstance(c, dict) else {"text": c} for c in msg["content"]]
                     messages.append(msg)
-            
-            # Add the current user input in correct schema
             messages.append({"role": "user", "content": [{"text": user_message}]})
-            
-            # Invoke the agent
             response = self.agent.invoke({"messages": messages})
-            
-            # Extract the response content
+            print(f"[TodoAgent] agent.invoke response: {response}")
             if "messages" in response and response["messages"]:
+                print(f"[TodoAgent] Returning response: {response['messages'][-1].content}")
                 return response["messages"][-1].content
             else:
+                print("[TodoAgent] No messages in response, returning fallback.")
                 return "I've processed your todo request. How else can I help you?"
-                
         except Exception as e:
-            return f"I encountered an error while processing your todo request: {str(e)}. Please try again." 
+            print(f"[TodoAgent] Exception in process: {e}")
+            return f"I encountered an error while processing your todo request: {str(e)}. Please try again."
 
     def list_todos(self, show_completed: bool = False, category: str = None) -> str:
         """Directly list todos for the current user."""
-        return list_todos(show_completed, category, self.user_id) 
+        print(f"[TodoAgent] list_todos called for user_id={self.user_id}, show_completed={show_completed}, category={category}")
+        result = list_todos(show_completed, category, self.user_id)
+        print(f"[TodoAgent] list_todos result: {result}")
+        return result 
