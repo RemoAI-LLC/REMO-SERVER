@@ -1380,4 +1380,20 @@ class DynamoDBService:
             print(f"Error retrieving Google credentials: {e}")
             return None
 
+    def delete_google_credentials(self, user_id: str) -> bool:
+        """
+        Delete Google OAuth credentials and email for a user from the users table.
+        """
+        if not self.users_table:
+            return False
+        try:
+            self.users_table.update_item(
+                Key={'privy_id': user_id},
+                UpdateExpression="REMOVE google_credentials, google_email"
+            )
+            return True
+        except Exception as e:
+            print(f"Error deleting Google credentials: {e}")
+            return False
+
 dynamodb_service_singleton = DynamoDBService() 

@@ -21,6 +21,7 @@ try:
     from langchain_aws import ChatBedrock
 except ImportError:
     ChatBedrock = None
+import re
 
 # Add the parent directory to the path to import required modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -208,19 +209,71 @@ Would you like to:
 
 Just let me know what you'd like to do!"""
 
-    def _handle_schedule_email(self, message: str) -> str:
-        """Handle email scheduling requests."""
-        return """⏰ I can help you schedule emails!
+    def _handle_schedule_email(self, message: str, recursion_count: int = 0) -> str:
+        """Handle email scheduling requests with slot filling and recursion limit."""
+        MAX_RECURSION = 5
+        details, missing = self.extract_meeting_details(message)
+        if recursion_count > MAX_RECURSION:
+            return f"❌ Sorry, I couldn't extract all the meeting details after several tries. Please provide: {', '.join(missing)}."
+        if not missing:
+            # All details found, schedule the meeting
+            return self.tools["schedule_email_tool"](
+                attendees=details['attendees'],
+                subject=details['subject'],
+                date=details['date'],
+                time=details['time'],
+                duration=details['duration'],
+                location='Google Meet',
+                description=details['description']
+            )
+        else:
+            # Log missing fields and ask for only those
+            return f"To schedule your meeting, I still need: {', '.join(missing)}. Please provide them in your next message!"
 
-To schedule an email, please provide:
-- Recipients
-- Subject
-- Email body
-- When you want it sent (date and time)
-
-Example: "Schedule an email to team@company.com with subject 'Weekly Update' and body 'Here's this week's update' for tomorrow at 9am"
-
-When would you like to schedule your email for?"""
+    def extract_meeting_details(self, message: str):
+        """
+        Extract attendees (emails), date, time, duration, subject, and description from the message.
+        Returns a dict with found fields and a list of missing fields.
+        """
+        details = {}
+        missing = []
+        # Extract emails
+        emails = re.findall(r"[\w\.-]+@[\w\.-]+", message)
+        if emails:
+            details['attendees'] = emails
+        else:
+            missing.append('attendees (email addresses)')
+        # Extract date (very basic, improve as needed)
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2}|\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b \d{1,2}(?:, \d{4})?)", message, re.IGNORECASE)
+        if date_match:
+            details['date'] = date_match.group(0)
+        else:
+            missing.append('date')
+        # Extract time (basic)
+        time_match = re.search(r"(\d{1,2}:\d{2}\s?(?:am|pm)?|\d{1,2}\s?(?:am|pm))", message, re.IGNORECASE)
+        if time_match:
+            details['time'] = time_match.group(0)
+        else:
+            missing.append('time')
+        # Extract duration
+        duration_match = re.search(r"(\d{1,3})\s?(minutes|min|hrs|hours)", message, re.IGNORECASE)
+        if duration_match:
+            details['duration'] = int(duration_match.group(1))
+        else:
+            details['duration'] = 60  # Default
+        # Extract subject
+        subject_match = re.search(r"subject:?\s*([\w\s]+)", message, re.IGNORECASE)
+        if subject_match:
+            details['subject'] = subject_match.group(1).strip()
+        else:
+            details['subject'] = 'Meeting'
+        # Extract description
+        desc_match = re.search(r"about:?\s*([\w\s]+)", message, re.IGNORECASE)
+        if desc_match:
+            details['description'] = desc_match.group(1).strip()
+        else:
+            details['description'] = ''
+        return details, missing
 
     def _handle_search_emails(self, message: str) -> str:
         """Handle email search requests."""

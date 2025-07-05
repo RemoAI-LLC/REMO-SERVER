@@ -680,13 +680,19 @@ async def auth_status(user_id: str):
 async def google_logout(user_id: str):
     """Logout user from Google OAuth."""
     try:
-        # Remove credentials from DynamoDB
-        # (Optional: implement a method in DynamoDBService to delete credentials)
-        return {
-            "user_id": user_id,
-            "success": True,
-            "message": "User logged out successfully"
-        }
+        deleted = dynamodb_service.delete_google_credentials(user_id)
+        if deleted:
+            return {
+                "user_id": user_id,
+                "success": True,
+                "message": "User logged out and credentials deleted successfully"
+            }
+        else:
+            return {
+                "user_id": user_id,
+                "success": False,
+                "message": "Failed to delete credentials. User may not have been connected."
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error logging out: {str(e)}")
 
