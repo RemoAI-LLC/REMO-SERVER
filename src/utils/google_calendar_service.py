@@ -5,15 +5,13 @@ Handles Google Calendar integration including OAuth flow and calendar operations
 
 import os
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from datetime import datetime, timedelta
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-import pickle
-import sys
 
 # Global storage for user credentials (moved from app.py)
 user_credentials = {}

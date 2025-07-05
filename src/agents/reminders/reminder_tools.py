@@ -4,15 +4,13 @@ Provides functions for creating, managing, and tracking reminders.
 Uses enhanced DynamoDB service with proper table structure.
 """
 
-from typing import Dict, List, Optional
+from typing import Optional
 from datetime import datetime, timedelta
-import json
 import os
 import sys
 
 # Add the parent directory to the path to import DynamoDB service
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.dynamodb_service import DynamoDBService
 from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 
 def set_reminder(title: str, datetime_str: str, description: str = "", user_id: str = None) -> str:
@@ -206,7 +204,7 @@ def mark_reminder_complete(reminder_id: str, user_id: str = None) -> str:
     try:
         # Update reminder status
         if dynamodb_service.update_reminder_status(user_id, reminder_id, "done"):
-            return f"✅ Reminder marked as completed"
+            return "✅ Reminder marked as completed"
         else:
             return "❌ Failed to mark reminder as complete"
     

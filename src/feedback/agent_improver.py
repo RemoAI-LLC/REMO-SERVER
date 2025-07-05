@@ -9,7 +9,7 @@ Following the LangChain agents-from-scratch human-in-the-loop pattern.
 
 import json
 import time
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -20,10 +20,9 @@ except ImportError:
 import boto3
 import os
 
-from .feedback_collector import FeedbackItem, FeedbackType, FeedbackRating
+from .feedback_collector import FeedbackItem
 from .feedback_analyzer import FeedbackAnalyzer
 from src.agents.email.email_agent import EmailAgent
-from src.memory.memory_utils import MemoryUtils
 
 @dataclass
 class ImprovementAction:
@@ -299,9 +298,6 @@ class AgentImprover:
         """Implement intent detection improvements."""
         target_intent = action.implementation_details["target_intent"]
         
-        # Generate improved patterns for the target intent
-        improved_patterns = self._generate_improved_intent_patterns(target_intent)
-        
         # Update the memory utils with improved patterns
         # This would typically update the actual intent detection logic
         # For now, we'll simulate the improvement
@@ -313,9 +309,6 @@ class AgentImprover:
         """Implement response quality improvements."""
         issue_type = action.implementation_details["issue_type"]
         
-        # Generate improved response templates
-        improved_templates = self._generate_improved_templates(issue_type)
-        
         # Update the email agent with improved templates
         # This would typically update the actual response generation logic
         
@@ -324,92 +317,10 @@ class AgentImprover:
     
     def _implement_length_optimization(self, action: ImprovementAction) -> bool:
         """Implement response length optimization."""
-        # Generate concise response guidelines
-        guidelines = self._generate_concise_guidelines()
-        
         # Update the email agent with length guidelines
         
         action.status = "completed"
         return True
-    
-    def _generate_improved_intent_patterns(self, target_intent: str) -> List[str]:
-        """Generate improved patterns for intent detection."""
-        prompt = f"""
-Generate improved patterns for detecting the intent: {target_intent}
-
-Consider:
-- Common user variations
-- Synonyms and related terms
-- Context clues
-- Edge cases
-
-Provide a list of improved patterns in JSON format:
-{{
-    "patterns": ["pattern1", "pattern2", "pattern3"],
-    "keywords": ["keyword1", "keyword2"],
-    "context_clues": ["clue1", "clue2"]
-}}
-"""
-        
-        try:
-            result = self.llm.invoke(prompt)
-            patterns = json.loads(result.content.strip())
-            return patterns.get("patterns", [])
-        except Exception as e:
-            print(f"Error generating improved patterns: {e}")
-            return []
-    
-    def _generate_improved_templates(self, issue_type: str) -> List[str]:
-        """Generate improved response templates."""
-        prompt = f"""
-Generate improved response templates to address the issue: {issue_type}
-
-Focus on:
-- Clarity and understandability
-- Completeness of information
-- Relevance to user needs
-- Professional tone
-
-Provide improved templates in JSON format:
-{{
-    "templates": ["template1", "template2", "template3"],
-    "guidelines": ["guideline1", "guideline2"]
-}}
-"""
-        
-        try:
-            result = self.llm.invoke(prompt)
-            templates = json.loads(result.content.strip())
-            return templates.get("templates", [])
-        except Exception as e:
-            print(f"Error generating improved templates: {e}")
-            return []
-    
-    def _generate_concise_guidelines(self) -> List[str]:
-        """Generate guidelines for concise responses."""
-        prompt = """
-Generate guidelines for creating concise but helpful email assistant responses.
-
-Focus on:
-- Eliminating unnecessary words
-- Getting to the point quickly
-- Maintaining helpfulness
-- Professional brevity
-
-Provide guidelines in JSON format:
-{
-    "guidelines": ["guideline1", "guideline2", "guideline3"],
-    "examples": ["example1", "example2"]
-}
-"""
-        
-        try:
-            result = self.llm.invoke(prompt)
-            guidelines = json.loads(result.content.strip())
-            return guidelines.get("guidelines", [])
-        except Exception as e:
-            print(f"Error generating concise guidelines: {e}")
-            return []
     
     def test_improvement(self, action: ImprovementAction, test_cases: List[str]) -> ImprovementResult:
         """
@@ -441,7 +352,7 @@ Provide guidelines in JSON format:
                 before_metrics=before_metrics,
                 after_metrics=after_metrics,
                 improvement_percentage=improvement_percentage,
-                notes=f"Improvement implemented successfully",
+                notes="Improvement implemented successfully",
                 completed_at=datetime.now()
             )
         else:
@@ -451,7 +362,7 @@ Provide guidelines in JSON format:
                 before_metrics=before_metrics,
                 after_metrics=before_metrics,  # No change
                 improvement_percentage=0.0,
-                notes=f"Improvement implementation failed",
+                notes="Improvement implementation failed",
                 completed_at=datetime.now()
             )
         

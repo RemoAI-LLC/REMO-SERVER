@@ -10,9 +10,8 @@ Following the LangChain agents-from-scratch pattern for tool design.
 
 import os
 import sys
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
-import json
+from typing import List, Optional
+from datetime import datetime
 import uuid
 
 # Add the parent directory to the path to import DynamoDB service
@@ -432,7 +431,7 @@ def schedule_meeting(
         # Save meeting to DynamoDB
         if dynamodb_service.save_meeting(user_id, meeting_data):
             attendees_str = ", ".join(attendees)
-            result = f"✅ Meeting scheduled successfully!\n\n"
+            result = "✅ Meeting scheduled successfully!\n\n"
             result += f"📅 Subject: {subject}\n"
             result += f"📅 Date: {date} at {time}\n"
             result += f"⏱️ Duration: {duration} minutes\n"
@@ -441,7 +440,7 @@ def schedule_meeting(
                 result += f"📍 Location: {location}\n"
             if description:
                 result += f"📝 Description: {description}\n"
-            result += f"\n📧 Calendar invites will be sent to all attendees."
+            result += "\n📧 Calendar invites will be sent to all attendees."
             return result
         else:
             return "❌ Failed to save meeting to database"

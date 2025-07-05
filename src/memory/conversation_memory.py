@@ -4,7 +4,7 @@ Manages conversation memory using LangChain memory components.
 Provides persistent conversation context across agent interactions.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
 from langchain.schema import BaseMessage, HumanMessage, AIMessage
 from datetime import datetime, timedelta

@@ -12,7 +12,7 @@ Following the LangChain agents-from-scratch pattern for agent design.
 
 import os
 import sys
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from datetime import datetime
 import json
 import boto3

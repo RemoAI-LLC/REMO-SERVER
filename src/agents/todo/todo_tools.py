@@ -4,9 +4,7 @@ Provides functions for creating, managing, and organizing todo items and tasks.
 Uses enhanced DynamoDB service with proper table structure.
 """
 
-from typing import Dict, List, Optional
 from datetime import datetime
-import json
 import os
 import sys
 
@@ -120,7 +118,7 @@ def mark_todo_complete(todo_id: str, user_id: str = None) -> str:
     try:
         # Update todo status
         if dynamodb_service.update_todo_status(user_id, todo_id, "done"):
-            return f"✅ Todo marked as completed!"
+            return "✅ Todo marked as completed!"
         else:
             return "❌ Failed to mark todo as complete"
     

@@ -5,9 +5,8 @@ Routes user requests to appropriate agents and aggregates responses.
 Enhanced with memory integration for better context awareness.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict
 from langgraph_supervisor import create_supervisor
-from langgraph.prebuilt import create_react_agent
 from ..agents.reminders.reminder_agent import ReminderAgent
 from ..agents.todo.todo_agent import TodoAgent
 from ..agents.email.email_agent import EmailAgent

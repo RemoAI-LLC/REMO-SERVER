@@ -7,7 +7,6 @@ Tests the new table structure and verifies all functionality.
 import os
 import sys
 from datetime import datetime, timedelta
-import json
 
 # Load environment variables from .env file
 try:

@@ -12,13 +12,12 @@ Following the LangChain agents-from-scratch pattern for triage systems.
 
 import os
 import sys
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from datetime import datetime
 import re
 
 # Add the parent directory to the path to import required modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.dynamodb_service import DynamoDBService
 from src.utils.dynamodb_service import dynamodb_service_singleton as dynamodb_service
 
 class EmailTriage:

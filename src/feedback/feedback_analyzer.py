@@ -8,9 +8,9 @@ Following the LangChain agents-from-scratch human-in-the-loop pattern.
 """
 
 import json
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
-from collections import defaultdict, Counter
+from typing import Dict, List, Any
+from datetime import datetime
+from collections import Counter
 
 try:
     from langchain_aws import ChatBedrock
@@ -19,7 +19,7 @@ except ImportError:
 import boto3
 import os
 
-from .feedback_collector import FeedbackItem, FeedbackType, FeedbackRating
+from .feedback_collector import FeedbackItem
 
 class FeedbackAnalyzer:
     """Analyzes feedback to identify patterns and improvement opportunities."""
@@ -201,9 +201,9 @@ class FeedbackAnalyzer:
             "average_response_length": avg_response_length,
             "length_rating_correlation": length_rating_correlation,
             "response_length_distribution": {
-                "short": len([l for l in response_lengths if l < 100]),
-                "medium": len([l for l in response_lengths if 100 <= l < 300]),
-                "long": len([l for l in response_lengths if l >= 300])
+                "short": len([length for length in response_lengths if length < 100]),
+                "medium": len([length for length in response_lengths if 100 <= length < 300]),
+                "long": len([length for length in response_lengths if length >= 300])
             }
         }
     

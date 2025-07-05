@@ -6,7 +6,7 @@ Uses DynamoDB with optimized table design for NoSQL operations.
 
 import boto3
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from botocore.exceptions import ClientError, NoCredentialsError
 import json
