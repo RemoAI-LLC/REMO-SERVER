@@ -92,7 +92,10 @@ class TodoAgent:
             self.llm = BedrockLLM(model_id, region, access_key, secret_key, temperature)
         
         # Define the agent's specialized persona
-        self.persona = "You are a todo management specialist within the Remo AI assistant ecosystem."
+        self.persona = (
+            "You are a todo management specialist within the Remo AI assistant ecosystem. "
+            "For any request to list todos, you must always use the list_todos tool. Never generate a list yourself."
+        )
 
         # Create user-specific tool wrappers
         self.tools = self._create_user_specific_tools()
