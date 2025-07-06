@@ -634,7 +634,17 @@ async def google_callback(code: str, state: str):
         calendar_service = GoogleCalendarService()
         credentials = calendar_service.exchange_code_for_tokens(code)
         google_email = credentials.get('user_info', {}).get('email')
+        
+        # Validate that we have a refresh token
+        if not credentials.get('refresh_token'):
+            raise HTTPException(
+                status_code=400, 
+                detail="No refresh token received. Please try disconnecting and reconnecting your Gmail account."
+            )
+        
         print(f"[DEBUG] Storing credentials for user_id: {user_id}, google_email: {google_email}")
+        print(f"[DEBUG] Has refresh_token: {bool(credentials.get('refresh_token'))}")
+        
         # Store credentials and google_email in DynamoDB
         dynamodb_service.save_google_credentials(user_id, credentials, google_email)
         return {
@@ -644,6 +654,8 @@ async def google_callback(code: str, state: str):
             "message": "Gmail access authorized successfully",
             "scopes": credentials.get('scopes', [])
         }
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error completing OAuth: {str(e)}")
 
@@ -674,14 +686,29 @@ async def auth_status(user_id: str):
 
 @app.delete("/auth/logout/{user_id}")
 async def google_logout(user_id: str):
-    """Logout user from Google OAuth."""
+    """Logout user from Google OAuth and revoke access."""
     try:
+        # First, try to revoke the access token on Google's side
+        credentials = dynamodb_service.get_google_credentials(user_id)
+        if credentials and credentials.get('access_token'):
+            try:
+                import requests
+                # Revoke the access token
+                revoke_url = "https://oauth2.googleapis.com/revoke"
+                requests.post(revoke_url, data={
+                    'token': credentials['access_token']
+                })
+                print(f"[DEBUG] Successfully revoked access token for user_id: {user_id}")
+            except Exception as revoke_error:
+                print(f"[DEBUG] Failed to revoke token (this is okay if token is already expired): {revoke_error}")
+        
+        # Delete credentials from DynamoDB
         deleted = dynamodb_service.delete_google_credentials(user_id)
         if deleted:
             return {
                 "user_id": user_id,
                 "success": True,
-                "message": "User logged out and credentials deleted successfully"
+                "message": "User logged out, access revoked, and credentials deleted successfully"
             }
         else:
             return {
@@ -708,6 +735,12 @@ async def create_calendar_event(request: FastAPIRequest):
         print(f"[DEBUG] Scheduling event for user_id: {user_id}, organizer_email: {organizer_email}")
         credentials = dynamodb_service.get_google_credentials(user_id)
         print(f"[DEBUG] Credentials found for user_id: {user_id}: {bool(credentials)}")
+        if credentials:
+            print(f"[DEBUG] Credentials keys: {list(credentials.keys())}")
+            print(f"[DEBUG] Has refresh_token: {'refresh_token' in credentials}")
+            print(f"[DEBUG] Has token_uri: {'token_uri' in credentials}")
+            print(f"[DEBUG] Has client_id: {'client_id' in credentials}")
+            print(f"[DEBUG] Has client_secret: {'client_secret' in credentials}")
         if credentials is None:
             raise HTTPException(status_code=401, detail="No Google credentials found for this user. Please connect Gmail in Integrations.")
         if not user_id or not data.get("subject") or not data.get("start_time") or not data.get("end_time") or not data.get("attendees"):

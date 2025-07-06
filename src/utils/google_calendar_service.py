@@ -77,10 +77,11 @@ class GoogleCalendarService:
         
         flow.redirect_uri = self.redirect_uri
         
-        # Generate authorization URL
+        # Generate authorization URL with forced consent to ensure refresh token
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
+            prompt='consent',  # Force consent screen to always get refresh token
             state=user_id
         )
         
@@ -156,6 +157,53 @@ class GoogleCalendarService:
             Created event data
         """
         try:
+            print(f"[DEBUG] Creating calendar event with credentials_data keys: {list(credentials_data.keys())}")
+            print(f"[DEBUG] Required fields check:")
+            print(f"  - access_token: {'access_token' in credentials_data}")
+            print(f"  - refresh_token: {'refresh_token' in credentials_data}")
+            print(f"  - token_uri: {'token_uri' in credentials_data}")
+            print(f"  - client_id: {'client_id' in credentials_data}")
+            print(f"  - client_secret: {'client_secret' in credentials_data}")
+            print(f"  - scopes: {'scopes' in credentials_data}")
+            
+            # Check if all required fields are present
+            required_fields = ['access_token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+            missing_fields = [field for field in required_fields if field not in credentials_data]
+            if missing_fields:
+                return {
+                    'success': False,
+                    'error': f"Missing required credential fields: {missing_fields}"
+                }
+            
+            # Check if values are not None or empty
+            print(f"[DEBUG] Field value checks:")
+            access_token = credentials_data.get('access_token')
+            refresh_token = credentials_data.get('refresh_token')
+            token_uri = credentials_data.get('token_uri')
+            client_id = credentials_data.get('client_id')
+            client_secret = credentials_data.get('client_secret')
+            scopes = credentials_data.get('scopes')
+            
+            print(f"  - access_token: {'None' if access_token is None else f'length {len(access_token)}'}")
+            print(f"  - refresh_token: {'None' if refresh_token is None else f'length {len(refresh_token)}'}")
+            print(f"  - token_uri: {token_uri}")
+            print(f"  - client_id: {client_id}")
+            print(f"  - client_secret: {'None' if client_secret is None else f'length {len(client_secret)}'}")
+            print(f"  - scopes: {'None' if scopes is None else f'count {len(scopes)}'}")
+            
+            # Check for empty or None values
+            empty_fields = []
+            for field in required_fields:
+                value = credentials_data.get(field)
+                if not value or (isinstance(value, str) and value.strip() == ''):
+                    empty_fields.append(field)
+            
+            if empty_fields:
+                return {
+                    'success': False,
+                    'error': f"Empty or None values for fields: {empty_fields}"
+                }
+            
             # Create credentials object
             credentials = Credentials(
                 token=credentials_data['access_token'],
