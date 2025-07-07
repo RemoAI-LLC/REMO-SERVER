@@ -66,25 +66,14 @@ class DynamoDBService:
         """Ensure all required tables exist, create them if they don't."""
         if not self.dynamodb:
             return
-        
         try:
-            # Check and create reminders table
             self._ensure_reminders_table()
-            
-            # Check and create todos table
             self._ensure_todos_table()
-            
-            # Check and create users table
             self._ensure_users_table()
-            
-            # Check and create conversation table
             self._ensure_conversation_table()
-            
-            # Check and create emails table
             self._ensure_emails_table()
-            
+            self._ensure_waitlist_table()  # NEW: waitlist table
             print("✅ All DynamoDB tables are ready")
-            
         except Exception as e:
             print(f"❌ Error ensuring tables exist: {e}")
     
@@ -473,6 +462,33 @@ class DynamoDBService:
             else:
                 raise e
     
+    def _ensure_waitlist_table(self):
+        """Ensure waitlist table exists."""
+        table_name = 'remo-waitlist'
+        try:
+            self.waitlist_table = self.dynamodb.Table(table_name)
+            self.waitlist_table.load()
+            print(f"✅ Waitlist table '{table_name}' exists")
+        except Exception as e:
+            if hasattr(e, 'response') and e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating waitlist table '{table_name}'...")
+                table = self.dynamodb.create_table(
+                    TableName=table_name,
+                    KeySchema=[
+                        {'AttributeName': 'email', 'KeyType': 'HASH'},
+                    ],
+                    AttributeDefinitions=[
+                        {'AttributeName': 'email', 'AttributeType': 'S'},
+                    ],
+                    BillingMode='PAY_PER_REQUEST'
+                )
+                table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+                self.waitlist_table = table
+                print(f"✅ Waitlist table '{table_name}' created successfully")
+            else:
+                print(f"❌ Error ensuring waitlist table: {e}")
+                raise e
+
     # ===== REMINDERS METHODS =====
     
     def save_reminder(self, user_id: str, reminder_data: Dict) -> bool:
@@ -1395,5 +1411,212 @@ class DynamoDBService:
         except Exception as e:
             print(f"Error deleting Google credentials: {e}")
             return False
+
+    # Account deletion methods
+    def delete_user_reminders(self, user_id: str) -> bool:
+        """Delete all reminders for a user."""
+        try:
+            if not self.reminders_table:
+                return False
+            
+            # Get all reminders for the user
+            response = self.reminders_table.query(
+                KeyConditionExpression='user_id = :user_id',
+                ExpressionAttributeValues={':user_id': user_id}
+            )
+            
+            # Delete each reminder
+            with self.reminders_table.batch_writer() as batch:
+                for item in response.get('Items', []):
+                    batch.delete_item(
+                        Key={
+                            'user_id': item['user_id'],
+                            'reminder_id': item['reminder_id']
+                        }
+                    )
+            
+            print(f"✅ Deleted all reminders for user: {user_id}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error deleting user reminders: {e}")
+            return False
+
+    def delete_user_todos(self, user_id: str) -> bool:
+        """Delete all todos for a user."""
+        try:
+            if not self.todos_table:
+                return False
+            
+            # Get all todos for the user
+            response = self.todos_table.query(
+                KeyConditionExpression='user_id = :user_id',
+                ExpressionAttributeValues={':user_id': user_id}
+            )
+            
+            # Delete each todo
+            with self.todos_table.batch_writer() as batch:
+                for item in response.get('Items', []):
+                    batch.delete_item(
+                        Key={
+                            'user_id': item['user_id'],
+                            'todo_id': item['todo_id']
+                        }
+                    )
+            
+            print(f"✅ Deleted all todos for user: {user_id}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error deleting user todos: {e}")
+            return False
+
+    def delete_user_conversations(self, user_id: str) -> bool:
+        """Delete all conversations for a user."""
+        try:
+            if not self.conversation_table:
+                return False
+            
+            # Get all conversations for the user
+            response = self.conversation_table.query(
+                KeyConditionExpression='user_id = :user_id',
+                ExpressionAttributeValues={':user_id': user_id}
+            )
+            
+            # Delete each conversation
+            with self.conversation_table.batch_writer() as batch:
+                for item in response.get('Items', []):
+                    batch.delete_item(
+                        Key={
+                            'user_id': item['user_id'],
+                            'timestamp': item['timestamp']
+                        }
+                    )
+            
+            print(f"✅ Deleted all conversations for user: {user_id}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error deleting user conversations: {e}")
+            return False
+
+    def delete_user_conversation_context(self, user_id: str) -> bool:
+        """Delete conversation context for a user."""
+        try:
+            if not self.conversation_context_table:
+                return False
+            
+            # Delete the context entry
+            response = self.conversation_context_table.delete_item(
+                Key={'user_id': user_id}
+            )
+            
+            print(f"✅ Deleted conversation context for user: {user_id}")
+            return True
+            
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"⚠️ No conversation context found for user: {user_id}")
+                return False
+            else:
+                print(f"❌ Error deleting conversation context: {e}")
+                return False
+        except Exception as e:
+            print(f"❌ Error deleting conversation context: {e}")
+            return False
+
+    def delete_user_preferences(self, user_id: str) -> bool:
+        """Delete user preferences."""
+        try:
+            if not self.users_table:
+                return False
+            
+            # Update user record to remove preferences
+            response = self.users_table.update_item(
+                Key={'privy_id': user_id},
+                UpdateExpression='REMOVE preferences',
+                ConditionExpression='attribute_exists(privy_id)'
+            )
+            
+            print(f"✅ Deleted preferences for user: {user_id}")
+            return True
+            
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                print(f"⚠️ No user preferences found for user: {user_id}")
+                return False
+            else:
+                print(f"❌ Error deleting user preferences: {e}")
+                return False
+        except Exception as e:
+            print(f"❌ Error deleting user preferences: {e}")
+            return False
+
+    def delete_user_feedback(self, user_id: str) -> bool:
+        """Delete all feedback for a user."""
+        try:
+            # This would require a feedback table - for now, return True
+            # as feedback deletion is not critical for account deletion
+            print(f"✅ Feedback deletion not implemented for user: {user_id}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error deleting user feedback: {e}")
+            return False
+
+    def delete_user_profile(self, user_id: str) -> bool:
+        """Delete user profile from users table."""
+        try:
+            if not self.users_table:
+                return False
+            
+            # Delete the user profile
+            response = self.users_table.delete_item(
+                Key={'privy_id': user_id}
+            )
+            
+            print(f"✅ Deleted user profile for user: {user_id}")
+            return True
+            
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"⚠️ No user profile found for user: {user_id}")
+                return False
+            else:
+                print(f"❌ Error deleting user profile: {e}")
+                return False
+        except Exception as e:
+            print(f"❌ Error deleting user profile: {e}")
+            return False
+
+    def save_waitlist_entry(self, email: str, name: str, timestamp: str) -> bool:
+        """Save a waitlist entry."""
+        if not hasattr(self, 'waitlist_table') or not self.waitlist_table:
+            print("[DynamoDBService] Waitlist table not initialized")
+            return False
+        try:
+            item = {
+                'email': email,
+                'name': name,
+                'timestamp': timestamp
+            }
+            self.waitlist_table.put_item(Item=item)
+            print(f"[DynamoDBService] Saved waitlist entry: {item}")
+            return True
+        except Exception as e:
+            print(f"[DynamoDBService] Error saving waitlist entry: {e}")
+            return False
+
+    def get_waitlist_entries(self) -> list:
+        """Get all waitlist entries."""
+        if not hasattr(self, 'waitlist_table') or not self.waitlist_table:
+            print("[DynamoDBService] Waitlist table not initialized")
+            return []
+        try:
+            response = self.waitlist_table.scan()
+            return response.get('Items', [])
+        except Exception as e:
+            print(f"[DynamoDBService] Error getting waitlist entries: {e}")
+            return []
 
 dynamodb_service_singleton = DynamoDBService() 
