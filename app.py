@@ -241,6 +241,17 @@ class CalendarEventRequest(BaseModel):
     description: str = ""
     timezone: str = "UTC"
 
+class WaitlistEntryRequest(BaseModel):
+    email: str
+    name: Optional[str] = "Anonymous"
+
+class WaitlistEntryResponse(BaseModel):
+    success: bool
+    message: str
+    email: str
+    name: str
+    timestamp: str
+
 @app.get("/")
 async def root():
     return {"message": "Remo AI Assistant API is running!"}
@@ -783,6 +794,174 @@ async def create_calendar_event(request: FastAPIRequest):
     except Exception as e:
         print(f"[DEBUG] Exception in /calendar/create-event: {e}")
         return {"success": False, "detail": str(e)}
+
+# Account Management Endpoints
+
+class DeleteAccountRequest(BaseModel):
+    user_id: str
+    confirmation: str = "DELETE_ACCOUNT"
+    reason: Optional[str] = None
+
+class DeleteAccountResponse(BaseModel):
+    success: bool
+    message: str
+    user_id: str
+    deleted_data_types: List[str]
+    timestamp: str
+
+@app.delete("/account/delete")
+async def delete_account(request: DeleteAccountRequest):
+    """
+    Delete user account and all associated data.
+    Requires confirmation string to prevent accidental deletion.
+    """
+    try:
+        user_id = request.user_id
+        
+        # Validate confirmation
+        if request.confirmation != "DELETE_ACCOUNT":
+            raise HTTPException(
+                status_code=400, 
+                detail="Confirmation required. Please type 'DELETE_ACCOUNT' to confirm."
+            )
+        
+        print(f"[DEBUG] Starting account deletion for user_id: {user_id}")
+        
+        # Get user managers to clean up
+        user_manager = get_user_manager(user_id)
+        deleted_data_types = []
+        
+        try:
+            # 1. Delete conversation memory
+            if user_manager['memory_manager']:
+                user_manager['memory_manager'].clear_memory()
+                deleted_data_types.append("conversation_memory")
+                print(f"[DEBUG] Deleted conversation memory for user_id: {user_id}")
+        except Exception as e:
+            print(f"[DEBUG] Error deleting conversation memory: {e}")
+        
+        try:
+            # 2. Delete conversation context
+            if user_manager['context_manager']:
+                user_manager['context_manager'].clear_context()
+                deleted_data_types.append("conversation_context")
+                print(f"[DEBUG] Deleted conversation context for user_id: {user_id}")
+        except Exception as e:
+            print(f"[DEBUG] Error deleting conversation context: {e}")
+        
+        try:
+            # 3. Delete user data from DynamoDB
+            db = dynamodb_service
+            
+            # Delete reminders
+            reminders_deleted = db.delete_user_reminders(user_id)
+            if reminders_deleted:
+                deleted_data_types.append("reminders")
+                print(f"[DEBUG] Deleted reminders for user_id: {user_id}")
+            
+            # Delete todos
+            todos_deleted = db.delete_user_todos(user_id)
+            if todos_deleted:
+                deleted_data_types.append("todos")
+                print(f"[DEBUG] Deleted todos for user_id: {user_id}")
+            
+            # Delete conversations
+            conversations_deleted = db.delete_user_conversations(user_id)
+            if conversations_deleted:
+                deleted_data_types.append("conversations")
+                print(f"[DEBUG] Deleted conversations for user_id: {user_id}")
+            
+            # Delete conversation context
+            context_deleted = db.delete_user_conversation_context(user_id)
+            if context_deleted:
+                deleted_data_types.append("conversation_context")
+                print(f"[DEBUG] Deleted conversation context for user_id: {user_id}")
+            
+            # Delete user preferences
+            preferences_deleted = db.delete_user_preferences(user_id)
+            if preferences_deleted:
+                deleted_data_types.append("preferences")
+                print(f"[DEBUG] Deleted preferences for user_id: {user_id}")
+            
+            # Delete feedback
+            feedback_deleted = db.delete_user_feedback(user_id)
+            if feedback_deleted:
+                deleted_data_types.append("feedback")
+                print(f"[DEBUG] Deleted feedback for user_id: {user_id}")
+            
+            # Delete Google credentials
+            google_creds_deleted = db.delete_google_credentials(user_id)
+            if google_creds_deleted:
+                deleted_data_types.append("google_credentials")
+                print(f"[DEBUG] Deleted Google credentials for user_id: {user_id}")
+            
+            # Delete user profile
+            profile_deleted = db.delete_user_profile(user_id)
+            if profile_deleted:
+                deleted_data_types.append("user_profile")
+                print(f"[DEBUG] Deleted user profile for user_id: {user_id}")
+                
+        except Exception as e:
+            print(f"[DEBUG] Error deleting DynamoDB data: {e}")
+            raise HTTPException(status_code=500, detail=f"Error deleting user data: {str(e)}")
+        
+        # 4. Remove from user managers cache
+        if user_id in user_managers:
+            del user_managers[user_id]
+            print(f"[DEBUG] Removed user from managers cache: {user_id}")
+        
+        # 5. Log deletion (optional - for audit purposes)
+        try:
+            deletion_log = {
+                "user_id": user_id,
+                "deleted_at": datetime.now().isoformat(),
+                "deleted_data_types": deleted_data_types,
+                "reason": request.reason,
+                "ip_address": "unknown"  # Could be extracted from request if needed
+            }
+            # You could store this in a separate audit table if needed
+            print(f"[AUDIT] Account deletion logged: {deletion_log}")
+        except Exception as e:
+            print(f"[DEBUG] Error logging deletion: {e}")
+        
+        print(f"[DEBUG] Account deletion completed for user_id: {user_id}")
+        
+        return DeleteAccountResponse(
+            success=True,
+            message="Account and all associated data deleted successfully",
+            user_id=user_id,
+            deleted_data_types=deleted_data_types,
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"[DEBUG] Exception in account deletion: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting account: {str(e)}")
+
+@app.post("/waitlist", response_model=WaitlistEntryResponse)
+async def join_waitlist(entry: WaitlistEntryRequest):
+    """Add a user to the waitlist."""
+    timestamp = datetime.now().isoformat()
+    if not entry.email or "@" not in entry.email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+    success = dynamodb_service.save_waitlist_entry(entry.email, entry.name or "Anonymous", timestamp)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save waitlist entry.")
+    return WaitlistEntryResponse(
+        success=True,
+        message="Successfully joined the waitlist!",
+        email=entry.email,
+        name=entry.name or "Anonymous",
+        timestamp=timestamp
+    )
+
+@app.get("/waitlist")
+async def list_waitlist():
+    """List all waitlist entries (admin/debug)."""
+    entries = dynamodb_service.get_waitlist_entries()
+    return {"count": len(entries), "entries": entries}
 
 if __name__ == "__main__":
     import uvicorn
