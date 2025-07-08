@@ -963,6 +963,42 @@ async def list_waitlist():
     entries = dynamodb_service.get_waitlist_entries()
     return {"count": len(entries), "entries": entries}
 
+# --- New Endpoints for Dashboard Data ---
+
+@app.get("/user/{user_id}/reminders")
+async def get_user_reminders(user_id: str):
+    """
+    Get all reminders for a user
+    """
+    try:
+        reminders = dynamodb_service.get_reminders(user_id)
+        return {"reminders": reminders}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving reminders: {str(e)}")
+
+@app.get("/user/{user_id}/todos")
+async def get_user_todos(user_id: str):
+    """
+    Get all todos for a user
+    """
+    try:
+        todos = dynamodb_service.get_todos(user_id)
+        return {"todos": todos}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving todos: {str(e)}")
+
+@app.get("/user/{user_id}/meetings")
+async def get_user_meetings(user_id: str):
+    """
+    Get all meetings for a user (stored as emails with meeting_type 'calendar_event')
+    """
+    try:
+        emails = dynamodb_service.get_emails(user_id)
+        meetings = [email for email in emails if email.get('meeting_type') == 'calendar_event']
+        return {"meetings": meetings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving meetings: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000) 
