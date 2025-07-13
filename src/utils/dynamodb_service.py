@@ -73,6 +73,7 @@ class DynamoDBService:
             self._ensure_conversation_table()
             self._ensure_emails_table()
             self._ensure_waitlist_table()  # NEW: waitlist table
+            self._ensure_data_analyst_reports_table() # NEW: data analyst reports table
             print("✅ All DynamoDB tables are ready")
         except Exception as e:
             print(f"❌ Error ensuring tables exist: {e}")
@@ -488,6 +489,73 @@ class DynamoDBService:
             else:
                 print(f"❌ Error ensuring waitlist table: {e}")
                 raise e
+
+    def _ensure_data_analyst_reports_table(self):
+        """Ensure data analyst reports table exists."""
+        table_name = 'remo-data-analyst-reports'
+        try:
+            self.data_analyst_reports_table = self.dynamodb.Table(table_name)
+            self.data_analyst_reports_table.load()
+            print(f"✅ Data Analyst Reports table '{table_name}' exists")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"📝 Creating data analyst reports table '{table_name}'...")
+                self._create_data_analyst_reports_table(table_name)
+            else:
+                raise e
+
+    def _create_data_analyst_reports_table(self, table_name: str):
+        table = self.dynamodb.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {'AttributeName': 'user_id', 'KeyType': 'HASH'},
+                {'AttributeName': 'report_id', 'KeyType': 'RANGE'}
+            ],
+            AttributeDefinitions=[
+                {'AttributeName': 'user_id', 'AttributeType': 'S'},
+                {'AttributeName': 'report_id', 'AttributeType': 'S'}
+            ],
+            BillingMode='PAY_PER_REQUEST'
+        )
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        self.data_analyst_reports_table = table
+        print(f"✅ Data Analyst Reports table '{table_name}' created successfully")
+
+    def save_data_analyst_report(self, user_id: str, report_id: str, report_data: dict) -> bool:
+        """Save a data analyst report for a user."""
+        if not hasattr(self, 'data_analyst_reports_table'):
+            self._ensure_data_analyst_reports_table()
+        try:
+            item = {
+                'user_id': user_id,
+                'report_id': report_id,
+                'created_at': datetime.now().isoformat(),
+                'report_data': json.dumps(report_data)
+            }
+            self.data_analyst_reports_table.put_item(Item=item)
+            return True
+        except Exception as e:
+            print(f"[DynamoDB] Error saving data analyst report: {e}")
+            return False
+
+    def get_data_analyst_reports(self, user_id: str, limit: int = 10) -> list:
+        """Retrieve data analyst reports for a user."""
+        if not hasattr(self, 'data_analyst_reports_table'):
+            self._ensure_data_analyst_reports_table()
+        try:
+            response = self.data_analyst_reports_table.query(
+                KeyConditionExpression=boto3.dynamodb.conditions.Key('user_id').eq(user_id),
+                Limit=limit,
+                ScanIndexForward=False
+            )
+            items = response.get('Items', [])
+            for item in items:
+                if 'report_data' in item:
+                    item['report_data'] = json.loads(item['report_data'])
+            return items
+        except Exception as e:
+            print(f"[DynamoDB] Error retrieving data analyst reports: {e}")
+            return []
 
     # ===== REMINDERS METHODS =====
     

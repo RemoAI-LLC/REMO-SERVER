@@ -29,3 +29,9 @@ dataclasses-json>=0.6.0  # For JSON serialization of dataclasses
 pandas>=2.0.0  # For data analysis and visualization
 matplotlib>=3.7.0  # For plotting evaluation results
 seaborn>=0.12.0  # For statistical data visualization 
+pandas
+matplotlib
+openpyxl 
+seaborn
+statsmodels
+reportlab 
