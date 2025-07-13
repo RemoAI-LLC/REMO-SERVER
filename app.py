@@ -6,11 +6,12 @@ from dotenv import load_dotenv
 import os
 import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+import tempfile
 
 from typing import Annotated
 from typing_extensions import TypedDict
@@ -29,6 +30,7 @@ from src.feedback import (
     FeedbackCollector, FeedbackAnalyzer, AgentImprover, FeedbackType, FeedbackRating
 )
 from src.utils.google_calendar_service import GoogleCalendarService
+from src.agents.data_analyst.data_analyst_agent import DataAnalystAgent
 
 load_dotenv()
 
@@ -113,7 +115,7 @@ llm = get_bedrock_llm()
 
 REMO_SYSTEM_PROMPT = """You are Remo, a personal AI Assistant that can be hired by every human on the planet. Your mission is to make personal assistance accessible to everyone, not just the wealthy. You are designed to be a genuine, human-like personal assistant that understands and empathizes with people's daily needs and challenges.\n\nYou now have access to specialized AI agents that help you provide even better service:\n\n**Your Specialized Team:**\n- **Reminder Agent**: Manages reminders, alerts, and scheduled tasks\n- **Todo Agent**: Handles todo lists, task organization, and project management\n\nYour key characteristics are:\n\n1. Human-Like Interaction:\n   - Communicate naturally and conversationally\n   - Show empathy and understanding\n   - Use appropriate humor and personality\n   - Maintain a warm, friendly tone while staying professional\n   - Express emotions appropriately in responses\n\n2. Proactive Assistance:\n   - Anticipate needs before they're expressed\n   - Offer helpful suggestions proactively\n   - Remember user preferences and patterns\n   - Follow up on previous conversations\n   - Take initiative in solving problems\n\n3. Professional yet Approachable:\n   - Balance professionalism with friendliness\n   - Be respectful and considerate\n   - Maintain appropriate boundaries\n   - Show genuine interest in helping\n   - Be patient and understanding\n\n4. Task Management & Organization:\n   - Help manage daily schedules and tasks\n   - Organize and prioritize work\n   - Set reminders and follow-ups\n   - Coordinate multiple activities\n   - Keep track of important deadlines\n\n5. Problem Solving & Resourcefulness:\n   - Think creatively to solve problems\n   - Find efficient solutions\n   - Adapt to different situations\n   - Learn from each interaction\n   - Provide practical, actionable advice\n\nYour enhanced capabilities include:\n- Managing emails and communications\n- Scheduling and calendar management\n- Task and project organization\n- Research and information gathering\n- Job application assistance\n- Food ordering and delivery coordination\n- Workflow automation\n- Personal and professional task management\n- Reminder and follow-up management\n- Basic decision support\n- **NEW**: Specialized reminder management through Reminder Agent\n- **NEW**: Advanced todo and task organization through Todo Agent\n- **NEW**: Conversation memory for seamless multi-turn interactions\n\nAlways aim to:\n- Be proactive in offering solutions\n- Maintain a helpful and positive attitude\n- Focus on efficiency and productivity\n- Provide clear, actionable responses\n- Learn from each interaction to better serve the user\n- Show genuine care and understanding\n- Be resourceful and creative\n- Maintain a balance between professional and personal touch\n- **NEW**: Seamlessly coordinate with your specialized agents\n- **NEW**: Remember conversation context and continue seamlessly\n\nRemember: You're not just an AI assistant, but a personal companion that makes everyday tasks effortless and accessible to everyone. Your goal is to provide the same level of personal assistance that was once only available to the wealthy, making it accessible to every human on the planet.\n\nWhen interacting:\n1. Be natural and conversational\n2. Show personality and warmth\n3. Be proactive but not pushy\n4. Remember context and preferences\n5. Express appropriate emotions\n6. Be resourceful and creative\n7. Maintain professionalism while being friendly\n8. Show genuine interest in helping\n9. **NEW**: Coordinate with your specialized agents when needed\n10. **NEW**: Use conversation memory to provide seamless multi-turn interactions\n\nYour responses should feel like talking to a real human personal assistant who is:\n- Professional yet approachable\n- Efficient yet caring\n- Smart yet humble\n- Helpful yet not overbearing\n- Resourceful yet practical\n- **NEW**: Backed by a team of specialized experts\n- **NEW**: With perfect memory of your conversation"""
 
-def remo_chat(user_message: str, conversation_history: list = None, user_id: str = None) -> str:
+def remo_chat(user_message: str, conversation_history: list = None, user_id: str = None, file_bytes: bytes = None) -> str:
     print("[DEBUG] Entered remo_chat with message:", repr(user_message))
     # Get user-specific managers if user_id provided
     if user_id:
@@ -126,22 +128,18 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
         memory_manager = ConversationMemoryManager(memory_type="buffer")
         context_manager = ConversationContextManager()
         supervisor_orchestrator = SupervisorOrchestrator()
-    
     # Initialize conversation if needed
     if not context_manager.conversation_start_time:
         context_manager.start_conversation()
         memory_manager.start_conversation()
-    
     # Add conversation history to memory if provided
     if conversation_history:
         for msg in conversation_history:
             if msg.get('role') and msg.get('content'):
                 memory_manager.add_message(msg['role'], msg['content'])
-    
     # Add current user message to memory
     memory_manager.add_message("user", user_message)
     context_manager.update_activity()
-    
     # Always route through supervisor orchestrator
     try:
         # Get recent messages for context
@@ -152,7 +150,7 @@ def remo_chat(user_message: str, conversation_history: list = None, user_id: str
                 "role": "user" if hasattr(msg, 'type') and msg.type == "human" else "assistant",
                 "content": msg.content
             })
-        agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent)
+        agent_response = supervisor_orchestrator.process_request(user_message, conversation_history_for_agent, file_bytes=file_bytes)
         memory_manager.add_message("assistant", agent_response)
         context_manager.add_agent_interaction(
             agent_name="supervisor_orchestrator",
@@ -185,7 +183,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
-    response: str
+    response: Any
     success: bool
     timestamp: str
     error: Optional[str] = None
@@ -257,26 +255,35 @@ async def root():
     return {"message": "Remo AI Assistant API is running!"}
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
-    print("[DEBUG] /chat endpoint called with:", repr(request.message))
+async def chat(
+    message: str = Form(...),
+    conversation_history: str = Form(None),
+    user_id: str = Form(None),
+    file: UploadFile = File(None)
+):
     import re
     try:
+        # Parse conversation_history if provided as JSON string
+        history = []
+        if conversation_history:
+            import json
+            try:
+                history = json.loads(conversation_history)
+            except Exception:
+                history = []
         # Warmup ping detection
-        if request.message == "__warmup__":
-            _ = remo_chat(request.message, request.conversation_history, request.user_id)
+        if message == "__warmup__":
+            _ = remo_chat(message, history, user_id)
             return ChatResponse(
                 response="",
                 success=True,
                 timestamp=datetime.now().isoformat(),
-                user_id=request.user_id
+                user_id=user_id
             )
-        print("[DEBUG] Calling remo_chat...")
-        response = remo_chat(request.message, request.conversation_history, request.user_id)
-        print("[DEBUG] remo_chat returned:", repr(response))
-        # If response is blank, return a helpful error message
+        file_bytes = await file.read() if file is not None else None
+        response = remo_chat(message, history, user_id, file_bytes=file_bytes)
         if not response or not response.strip():
             response = "Sorry, I couldn't generate a response. Please try again or check the backend logs."
-        # Split reasoning and main message
         match = re.match(r"<thinking>(.*?)</thinking>\s*(.*)", response, re.DOTALL)
         if match:
             reasoning = match.group(1).strip()
@@ -284,24 +291,26 @@ async def chat(request: ChatRequest):
         else:
             reasoning = ""
             main_message = response.strip()
-        # Neatly log both
-        if reasoning:
-            print(f"[REASONING] {reasoning}")
-        print(f"[RESPONSE] {main_message}")
-        # Return only main_message to frontend
+        # Try to parse main_message as JSON if it looks like JSON
+        import json
+        parsed_response = main_message
+        if (isinstance(main_message, str) and (main_message.strip().startswith('{') or main_message.strip().startswith('['))):
+            try:
+                parsed_response = json.loads(main_message)
+            except Exception:
+                parsed_response = main_message
         return ChatResponse(
-            response=main_message,
+            response=parsed_response,
             success=True,
             timestamp=datetime.now().isoformat(),
-            user_id=request.user_id
+            user_id=user_id
         )
     except Exception as e:
-        print("[DEBUG] Exception in /chat endpoint:", str(e))
         return ChatResponse(
             response=f"[ERROR] {str(e)}",
             success=False,
             timestamp=datetime.now().isoformat(),
-            user_id=request.user_id
+            user_id=user_id
         )
 
 @app.get("/user/{user_id}/data")
@@ -998,6 +1007,43 @@ async def get_user_meetings(user_id: str):
         return {"meetings": meetings}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving meetings: {str(e)}")
+
+@app.post("/data-analyst/analyze")
+async def analyze_excel(user_id: str, file: UploadFile = File(...), pdf: bool = False):
+    try:
+        file_bytes = await file.read()
+        agent = DataAnalystAgent(user_id)
+        report = agent.analyze(file_bytes)
+        
+        # Check if analysis returned an error
+        if "error" in report:
+            return {"success": False, "error": report["error"]}
+        
+        # Save report to DynamoDB
+        dynamodb_service.save_data_analyst_report(user_id, report['report_id'], report)
+        response = {"success": True, "report": report}
+        if pdf:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_pdf:
+                agent.generate_pdf_report(report, tmp_pdf.name)
+                response["pdf_url"] = f"/data-analyst/report-pdf/{user_id}/{report['report_id']}"
+        return response
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/data-analyst/report-pdf/{user_id}/{report_id}")
+async def get_report_pdf(user_id: str, report_id: str):
+    try:
+        # Retrieve report from DynamoDB
+        reports = dynamodb_service.get_data_analyst_reports(user_id, limit=100)
+        report = next((r['report_data'] for r in reports if r['report_id'] == report_id), None)
+        if not report:
+            return {"success": False, "error": "Report not found"}
+        agent = DataAnalystAgent(user_id)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_pdf:
+            agent.generate_pdf_report(report, tmp_pdf.name)
+            return FileResponse(tmp_pdf.name, filename=f"report_{report_id}.pdf", media_type="application/pdf")
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
