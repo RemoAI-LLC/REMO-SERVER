@@ -165,21 +165,46 @@ class SupervisorOrchestrator:
         
         lower_input = user_input.lower()
         # Custom routing for Data Analyst Agent with file
-        if ("analyze data" in lower_input or "excel analysis" in lower_input or "data analyst" in lower_input or "analyze excel" in lower_input):
-            if file_bytes is not None:
-                print("[Supervisor] Routing to DataAnalystAgent for data analysis with file.");
-                result = self.data_analyst_agent.get_agent()({"file_bytes": file_bytes});
-                if isinstance(result, dict):
-                    import json
-                    return json.dumps(result)
-                return str(result)
+        if ("analyze data" in lower_input or "excel analysis" in lower_input or "data analyst" in lower_input or "analyze excel" in lower_input or "market analysis" in lower_input or "gartner" in lower_input or "industry report" in lower_input):
+            print("[Supervisor] Routing to DataAnalystAgent for data analysis.")
+            
+            # Gartner-style analyst prompt for market analysis requests
+            GARTNER_PROMPT = (
+                "You are a world-class industry analyst with expertise in market research, competitive intelligence, and strategic forecasting.\n\n"
+                "Your goal is to simulate a Gartner-style report using public data, historical trends, and logical estimation.\n\n"
+                "For each request:\n\n"
+                "• Generate clear, structured insights based on known market signals.\n"
+                "• Build data-backed forecasts using assumptions (state them).\n"
+                "• Identify top vendors and categorize them by niche, scale, or innovation.\n"
+                "• Highlight risks, emerging players, and future trends.\n\n"
+                "Be analytical, not vague. Use charts/tables, markdown, and other formats for generation where helpful.\n\n"
+                "Be explicit about what's estimated vs known.\n\n"
+                "Use this structure:\n\n"
+                "1. Market Overview\n"
+                "2. Key Players\n"
+                "3. Forecast (1–3 years)\n"
+                "4. Opportunities & Risks\n"
+                "5. Strategic Insights\n"
+            )
+            
+            # If it's a market analysis/Gartner/industry report, prepend the prompt
+            if ("market analysis" in lower_input or "gartner" in lower_input or "industry report" in lower_input):
+                analyst_prompt = GARTNER_PROMPT + "\n\n" + user_input
             else:
-                print("[Supervisor] Routing to DataAnalystAgent for data analysis (no file).");
-                result = self.data_analyst_agent.get_agent()(user_input);
-                if isinstance(result, dict):
-                    import json
-                    return json.dumps(result)
-                return str(result)
+                analyst_prompt = user_input
+            
+            # If file is provided, use the tool directly for better reliability
+            if file_bytes is not None:
+                print("[Supervisor] Using DataAnalystAgent tool directly with file.")
+                # Call the analyze method directly to get the raw data
+                result = self.data_analyst_agent.analyze(file_bytes)
+                # Return the raw analysis data as JSON string
+                return json.dumps(result)
+            else:
+                # If no file, use the process method for guidance
+                print("[Supervisor] Using DataAnalystAgent process method for guidance.")
+                result = self.data_analyst_agent.process(analyst_prompt, conversation_history, file_bytes)
+                return result
         # --- End custom routing ---
         # Custom routing for Content Creator Agent
         if ("generate" in lower_input or "create" in lower_input) and ("image" in lower_input or "photo" in lower_input):
