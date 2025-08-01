@@ -36,3 +36,6 @@ seaborn
 statsmodels
 reportlab 
 python-multipart
+
+# Elastic Beanstalk specific dependencies
+gunicorn>=21.0.0  # Production WSGI server
