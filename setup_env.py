@@ -30,7 +30,7 @@ def setup_environment_from_parameter_store():
             'GOOGLE_CLIENT_ID',
             'GOOGLE_CLIENT_SECRET',
             'GOOGLE_REDIRECT_URI',
-            'GEMINI_API_KEY'
+            'OPENAI_API_KEY'
         ]
         
         # Load parameters from Parameter Store
@@ -56,24 +56,37 @@ def create_parameter_store_entries():
     try:
         ssm = boto3.client('ssm', region_name='us-east-1')
         
-        # Environment variables to store
+        # Environment variables to store (with placeholders - replace with actual values)
         env_vars = {
             'AWS_ACCESS_KEY_ID': 'your-aws-access-key-id',
             'AWS_SECRET_ACCESS_KEY': 'your-aws-secret-access-key',
             'AWS_REGION': 'us-east-1',
             'BEDROCK_MODEL_ID': 'amazon.nova-lite-v1:0',
-            'LANGCHAIN_API_KEY': 'your-langchain-api-key-here',
-            'LANGCHAIN_PROJECT': 'your-langchain-project-name',
-            'LANGCHAIN_TRACING_V2': 'false',
+            'LANGCHAIN_API_KEY': 'your-langchain-api-key',
+            'LANGCHAIN_PROJECT': 'AWS EC2',
+            'LANGCHAIN_TRACING_V2': 'true',
             'DYNAMODB_TABLE_NAME': 'remo-user-data',
             'HOST': '0.0.0.0',
             'PORT': '8000',
             'DEBUG': 'true',
             'GOOGLE_CLIENT_ID': 'your-google-client-id',
             'GOOGLE_CLIENT_SECRET': 'your-google-client-secret',
-            'GOOGLE_REDIRECT_URI': 'http://your-ec2-ip:8000/auth/google/callback',
-            'GEMINI_API_KEY': 'your-gemini-api-key'
+            'GOOGLE_REDIRECT_URI': 'http://app.hireremo.com/auth/google/callback',
+            'OPENAI_API_KEY': 'your-openai-api-key'
         }
+        
+        print("⚠️  WARNING: You need to replace the placeholder values with your actual API keys!")
+        print("📝 Please edit this script and replace the placeholder values before running.")
+        print("🔐 Replace the following placeholders with your actual values:")
+        print("   - your-aws-access-key-id")
+        print("   - your-aws-secret-access-key")
+        print("   - your-google-client-id")
+        print("   - your-google-client-secret")
+        print("   - your-langchain-api-key")
+        print("   - your-openai-api-key")
+        print("")
+        print("❌ Aborting to prevent creating Parameter Store entries with placeholder values.")
+        return
         
         for param_name, param_value in env_vars.items():
             try:
