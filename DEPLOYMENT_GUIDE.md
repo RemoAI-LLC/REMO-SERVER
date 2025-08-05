@@ -2,6 +2,8 @@
 
 ## 🚀 Quick Start (AWS Parameter Store Method)
 
+**✅ UPDATED: This guide now uses AWS Parameter Store for secure environment variable management. No secrets are stored in code.**
+
 ### Step 1: Make Your Repository Public
 
 ```bash
@@ -50,50 +52,41 @@ chmod +x deploy.sh
 #### Configure AWS CLI and Create Parameter Store Entries
 
 ```bash
-# Install AWS CLI if not already installed
-sudo apt-get install awscli
+# Install AWS CLI v2 (since v1 isn't available on Ubuntu 24.04)
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+sudo apt install unzip
+unzip awscliv2.zip
+sudo ./aws/install
 
 # Configure AWS credentials
 aws configure
 # Enter your AWS Access Key ID, Secret Access Key, Region (us-east-1), and output format (json)
 
-# Edit the setup script with your actual values
-nano setup_env.py
-# Replace all placeholder values with your actual API keys and secrets:
-# - AWS_ACCESS_KEY_ID: Your actual AWS access key
-# - AWS_SECRET_ACCESS_KEY: Your actual AWS secret key
-# - GOOGLE_CLIENT_ID: Your Google OAuth client ID
-# - GOOGLE_CLIENT_SECRET: Your Google OAuth client secret
-# - GOOGLE_REDIRECT_URI: http://your-ec2-public-ip:8000/auth/google/callback
-# - LANGCHAIN_API_KEY: Your LangChain API key (optional)
-# - GEMINI_API_KEY: Your Gemini API key (optional)
-
-# Create Parameter Store entries
-python3 setup_env.py create
+# Test Parameter Store access
+aws ssm get-parameter --name "/remo-server/AWS_ACCESS_KEY_ID" --with-decryption
 ```
 
-#### Required Environment Variables to Set:
+#### Required Environment Variables to Set in AWS Parameter Store:
 
-```python
-# In setup_env.py, update these values:
-env_vars = {
-    'AWS_ACCESS_KEY_ID': 'your-actual-aws-access-key-id',
-    'AWS_SECRET_ACCESS_KEY': 'your-actual-aws-secret-access-key',
-    'AWS_REGION': 'us-east-1',
-    'BEDROCK_MODEL_ID': 'amazon.nova-lite-v1:0',
-    'LANGCHAIN_API_KEY': 'your-actual-langchain-api-key',
-    'LANGCHAIN_PROJECT': 'remo-server',
-    'LANGCHAIN_TRACING_V2': 'false',
-    'DYNAMODB_TABLE_NAME': 'remo-user-data',
-    'HOST': '0.0.0.0',
-    'PORT': '8000',
-    'DEBUG': 'true',
-    'GOOGLE_CLIENT_ID': 'your-actual-google-client-id',
-    'GOOGLE_CLIENT_SECRET': 'your-actual-google-client-secret',
-    'GOOGLE_REDIRECT_URI': 'http://your-ec2-public-ip:8000/auth/google/callback',
-    'GEMINI_API_KEY': 'your-actual-gemini-api-key'
-}
-```
+You need to create **15 parameters** in AWS Parameter Store with the prefix `/remo-server/`:
+
+**AWS Configuration (3 parameters):**
+
+1. `/remo-server/AWS_ACCESS_KEY_ID` → `SecureString` → `your-aws-access-key-id`
+2. `/remo-server/AWS_SECRET_ACCESS_KEY` → `SecureString` → `your-aws-secret-access-key`
+3. `/remo-server/AWS_REGION` → `String` → `us-east-1`
+
+**Bedrock Configuration (1 parameter):** 4. `/remo-server/BEDROCK_MODEL_ID` → `String` → `amazon.nova-lite-v1:0`
+
+**LangChain Configuration (3 parameters):** 5. `/remo-server/LANGCHAIN_API_KEY` → `SecureString` → `your-langchain-api-key` 6. `/remo-server/LANGCHAIN_PROJECT` → `String` → `AWS EC2` 7. `/remo-server/LANGCHAIN_TRACING_V2` → `String` → `true`
+
+**DynamoDB Configuration (1 parameter):** 8. `/remo-server/DYNAMODB_TABLE_NAME` → `String` → `remo-user-data`
+
+**Server Configuration (3 parameters):** 9. `/remo-server/HOST` → `String` → `0.0.0.0` 10. `/remo-server/PORT` → `String` → `8000` 11. `/remo-server/DEBUG` → `String` → `true`
+
+**Google OAuth Configuration (3 parameters):** 12. `/remo-server/GOOGLE_CLIENT_ID` → `SecureString` → `your-google-client-id` 13. `/remo-server/GOOGLE_CLIENT_SECRET` → `SecureString` → `your-google-client-secret` 14. `/remo-server/GOOGLE_REDIRECT_URI` → `String` → `http://app.hireremo.com/auth/google/callback`
+
+**OpenAI Configuration (1 parameter):** 15. `/remo-server/OPENAI_API_KEY` → `SecureString` → `your-openai-api-key`
 
 ### Step 5: Update Google OAuth Redirect URI
 
@@ -125,8 +118,8 @@ If you prefer manual deployment:
 # Update system
 sudo apt-get update && sudo apt-get upgrade -y
 
-# Install Python 3.11
-sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
+# Install Python 3.12 (available on Ubuntu 24.04)
+sudo apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
 
 # Install system dependencies
 sudo apt-get install -y build-essential libssl-dev libffi-dev python3-dev
@@ -136,7 +129,7 @@ git clone https://github.com/your-username/your-repo-name.git
 cd your-repo-name
 
 # Create virtual environment
-python3.11 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
@@ -144,9 +137,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # Set up environment variables with Parameter Store
-sudo apt-get install awscli
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+sudo apt install unzip
+unzip awscliv2.zip
+sudo ./aws/install
 aws configure
-python3 setup_env.py create
 
 # Run the application
 python app.py
