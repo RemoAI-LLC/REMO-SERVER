@@ -20,6 +20,10 @@ sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
 echo "🔧 Installing system dependencies..."
 sudo apt-get install -y build-essential libssl-dev libffi-dev python3-dev
 
+# Install AWS CLI
+echo "☁️ Installing AWS CLI..."
+sudo apt-get install -y awscli
+
 # Create application directory
 echo "📁 Setting up application directory..."
 sudo mkdir -p /opt/remo-server
@@ -68,21 +72,31 @@ echo "🔄 Enabling systemd service..."
 sudo systemctl daemon-reload
 sudo systemctl enable remo-server
 
-# Start the service
-echo "🚀 Starting REMO-SERVER..."
-sudo systemctl start remo-server
-
-# Check service status
-echo "📊 Checking service status..."
-sudo systemctl status remo-server --no-pager
-
 echo "✅ REMO-SERVER deployment completed!"
-echo "🌐 Server should be running on http://0.0.0.0:8000"
-echo "📚 API documentation available at http://your-ec2-ip:8000/docs"
+echo ""
+echo "📝 Next steps:"
+echo "1. Configure AWS credentials:"
+echo "   aws configure"
+echo ""
+echo "2. Edit setup_env.py with your actual values:"
+echo "   nano setup_env.py"
+echo ""
+echo "3. Create Parameter Store entries:"
+echo "   python3 setup_env.py create"
+echo ""
+echo "4. Start the service:"
+echo "   sudo systemctl start remo-server"
+echo ""
+echo "5. Check service status:"
+echo "   sudo systemctl status remo-server"
 echo ""
 echo "📋 Useful commands:"
 echo "  sudo systemctl status remo-server    # Check service status"
 echo "  sudo systemctl stop remo-server      # Stop the service"
 echo "  sudo systemctl start remo-server     # Start the service"
 echo "  sudo systemctl restart remo-server   # Restart the service"
-echo "  sudo journalctl -u remo-server -f    # View logs" 
+echo "  sudo journalctl -u remo-server -f    # View logs"
+echo ""
+echo "🌐 Once configured, server will be available at:"
+echo "  http://your-ec2-ip:8000"
+echo "  http://your-ec2-ip:8000/docs (API documentation)" 
